@@ -1586,4 +1586,17 @@ def main(page: ft.Page):
     carregar_dados_busca()
 
 
-ft.app(target=main)
+# Inicialização compatível com Flet 1.0+ (ft.run) e versões legadas (ft.app)
+if hasattr(ft, "run"):
+    try:
+        ft.run(main)
+    except TypeError:
+        ft.run(target=main)
+elif hasattr(ft, "app"):
+    ft.app(target=main)
+else:
+    try:
+        from flet.app import app
+        app(target=main)
+    except Exception:
+        pass
