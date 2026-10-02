@@ -9,50 +9,6 @@ import flet as ft
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
 
-# Garante existência de ElevatedButton, OutlinedButton e TextButton em qualquer versão do Flet
-if not hasattr(ft, "ElevatedButton"):
-    class _SafeElevatedButton:
-        def __new__(cls, *args, **kwargs):
-            btn_cls = getattr(ft, "FilledButton", getattr(ft, "Button", None))
-            if btn_cls:
-                try:
-                    return btn_cls(*args, **kwargs)
-                except TypeError:
-                    txt = args[0] if args else kwargs.pop("text", None)
-                    icon = kwargs.pop("icon", None)
-                    content = ft.Row([ft.Icon(icon), ft.Text(txt)], alignment=ft.MainAxisAlignment.CENTER, tight=True) if icon and txt else ft.Text(txt or "")
-                    return btn_cls(content=content, **kwargs)
-            return ft.Container(content=ft.Text(args[0] if args else kwargs.get("text", "")), on_click=kwargs.get("on_click"))
-    ft.ElevatedButton = _SafeElevatedButton
-
-if not hasattr(ft, "OutlinedButton"):
-    class _SafeOutlinedButton:
-        def __new__(cls, *args, **kwargs):
-            btn_cls = getattr(ft, "Button", None)
-            if btn_cls:
-                try:
-                    return btn_cls(*args, **kwargs)
-                except TypeError:
-                    txt = args[0] if args else kwargs.pop("text", None)
-                    icon = kwargs.pop("icon", None)
-                    content = ft.Row([ft.Icon(icon), ft.Text(txt)], alignment=ft.MainAxisAlignment.CENTER, tight=True) if icon and txt else ft.Text(txt or "")
-                    return btn_cls(content=content, **kwargs)
-            return ft.Container(content=ft.Text(args[0] if args else kwargs.get("text", "")), on_click=kwargs.get("on_click"))
-    ft.OutlinedButton = _SafeOutlinedButton
-
-if not hasattr(ft, "TextButton"):
-    class _SafeTextButton:
-        def __new__(cls, *args, **kwargs):
-            btn_cls = getattr(ft, "Button", None)
-            if btn_cls:
-                try:
-                    return btn_cls(*args, **kwargs)
-                except TypeError:
-                    txt = args[0] if args else kwargs.pop("text", None)
-                    return btn_cls(content=ft.Text(txt or ""), **kwargs)
-            return ft.Container(content=ft.Text(args[0] if args else kwargs.get("text", "")), on_click=kwargs.get("on_click"))
-    ft.TextButton = _SafeTextButton
-
 # Compatibilidade segura com todas as versões do Flet (0.24, 0.25+)
 _IconsBase = getattr(ft, "Icons", getattr(ft, "icons", None))
 _ColorsBase = getattr(ft, "Colors", getattr(ft, "colors", None))
@@ -1012,58 +968,6 @@ def main(page: ft.Page):
         renderizar_cards_na_tela()
         page.update()
 
-    def abrir_dialogo_sos(e):
-        def discar_emergencia(num):
-            page.close(dialogo_sos)
-            page.open(ft.SnackBar(ft.Text(f"Discando emergência: {num}...")))
-
-        dialogo_sos = ft.AlertDialog(
-            title=ft.Row(
-                [
-                    ft.Icon(Icons.WARNING_AMBER_ROUNDED, color=Colors.RED_500, size=28),
-                    ft.Text("Central de Emergência SOS", weight=ft.FontWeight.BOLD, size=16),
-                ],
-                spacing=8,
-            ),
-            content=ft.Column(
-                [
-                    ft.Text("Selecione o serviço de urgência com ligação imediata:", size=12, color=Colors.GREY_600),
-                    ft.Divider(height=10),
-                    ft.ElevatedButton(
-                        "🚑 192 - SAMU (Ambulância Urgente)",
-                        style=ft.ButtonStyle(bgcolor=Colors.RED_700, color=Colors.WHITE),
-                        width=320,
-                        on_click=lambda _: discar_emergencia("192"),
-                    ),
-                    ft.ElevatedButton(
-                        "🚒 193 - Bombeiros / Resgate",
-                        style=ft.ButtonStyle(bgcolor=Colors.ORANGE_800, color=Colors.WHITE),
-                        width=320,
-                        on_click=lambda _: discar_emergencia("193"),
-                    ),
-                    ft.ElevatedButton(
-                        "🚔 190 - Polícia Militar",
-                        style=ft.ButtonStyle(bgcolor=Colors.BLUE_800, color=Colors.WHITE),
-                        width=320,
-                        on_click=lambda _: discar_emergencia("190"),
-                    ),
-                    ft.OutlinedButton(
-                        "🚚 Chamar Guincho SOS Mais Próximo",
-                        icon=Icons.CAR_REPAIR,
-                        width=320,
-                        on_click=lambda _: selecionar_categoria("guincho", fechar_modal=True),
-                    ),
-                ],
-                spacing=10,
-                tight=True,
-            ),
-            actions=[
-                ft.TextButton("Fechar", on_click=lambda _: page.close(dialogo_sos))
-            ],
-            actions_alignment=ft.MainAxisAlignment.END,
-        )
-        page.open(dialogo_sos)
-
     def selecionar_categoria(chave, fechar_modal=False):
         nonlocal chave_servico_atual
         chave_servico_atual = chave
@@ -1293,24 +1197,38 @@ def main(page: ft.Page):
                                 ft.Divider(height=6, color=Colors.TRANSPARENT),
                                 ft.Row(
                                     [
-                                        ft.ElevatedButton(
-                                            "WhatsApp",
-                                            icon=Icons.CHAT,
-                                            style=ft.ButtonStyle(
-                                                bgcolor=Colors.GREEN_600,
-                                                color=Colors.WHITE,
-                                                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                                        ft.Container(
+                                            content=ft.Row(
+                                                [
+                                                    ft.Icon(Icons.CHAT, color=Colors.WHITE, size=15),
+                                                    ft.Text("WhatsApp", color=Colors.WHITE, size=12, weight=ft.FontWeight.BOLD),
+                                                ],
+                                                spacing=5,
+                                                tight=True,
+                                                alignment=ft.MainAxisAlignment.CENTER,
                                             ),
+                                            bgcolor=Colors.GREEN_600,
+                                            padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                                            border_radius=8,
+                                            ink=True,
                                             on_click=lambda e, tel=tel_str, nome=p["nome"]: webbrowser.open(
                                                 gerar_link_whatsapp(tel, nome)
                                             ),
                                         ),
-                                        ft.OutlinedButton(
-                                            "Ligar",
-                                            icon=Icons.PHONE,
-                                            style=ft.ButtonStyle(
-                                                padding=ft.padding.symmetric(horizontal=10, vertical=6),
+                                        ft.Container(
+                                            content=ft.Row(
+                                                [
+                                                    ft.Icon(Icons.PHONE, color=Colors.BLUE_600 if not eh_dark else Colors.BLUE_300, size=15),
+                                                    ft.Text("Ligar", color=Colors.BLUE_600 if not eh_dark else Colors.BLUE_300, size=12, weight=ft.FontWeight.BOLD),
+                                                ],
+                                                spacing=5,
+                                                tight=True,
+                                                alignment=ft.MainAxisAlignment.CENTER,
                                             ),
+                                            border=ft.border.all(1, Colors.BLUE_600 if not eh_dark else Colors.BLUE_300),
+                                            padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                                            border_radius=8,
+                                            ink=True,
                                             on_click=lambda e, n=p["nome"], t=tel_str: page.open(
                                                 ft.SnackBar(ft.Text(f"Contato {n}: {t}"))
                                             ),
@@ -1406,18 +1324,6 @@ def main(page: ft.Page):
         on_click=alternar_tema,
     )
 
-    botao_sos = ft.ElevatedButton(
-        "🚨 SOS",
-        style=ft.ButtonStyle(
-            bgcolor=Colors.RED_600,
-            color=Colors.WHITE,
-            padding=ft.padding.symmetric(horizontal=12, vertical=6),
-            elevation=4,
-        ),
-        tooltip="Emergência Rápida (SAMU, Bombeiros, Polícia)",
-        on_click=abrir_dialogo_sos,
-    )
-
     header = ft.Container(
         padding=ft.padding.only(left=14, right=14, top=14, bottom=6),
         content=ft.Column(
@@ -1450,13 +1356,7 @@ def main(page: ft.Page):
                             ],
                             spacing=8,
                         ),
-                        ft.Row(
-                            [
-                                botao_sos,
-                                botao_tema,
-                            ],
-                            spacing=4,
-                        ),
+                        botao_tema,
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                 ),
@@ -1561,14 +1461,25 @@ def main(page: ft.Page):
                         spacing=6,
                     ),
                     texto_status_mapa,
-                    ft.ElevatedButton(
-                        "Visualizar no Mapa Completo",
-                        icon=Icons.MAP,
-                        style=ft.ButtonStyle(
-                            bgcolor=Colors.WHITE,
-                            color=Colors.BLUE_900,
-                            elevation=2,
+                    ft.Container(
+                        content=ft.Row(
+                            [
+                                ft.Icon(Icons.MAP, color=Colors.BLUE_900, size=18),
+                                ft.Text(
+                                    "Visualizar no Mapa Completo",
+                                    color=Colors.BLUE_900,
+                                    weight=ft.FontWeight.BOLD,
+                                    size=13,
+                                ),
+                            ],
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            tight=True,
+                            spacing=8,
                         ),
+                        bgcolor=Colors.WHITE,
+                        padding=ft.padding.symmetric(horizontal=16, vertical=10),
+                        border_radius=10,
+                        ink=True,
                         on_click=lambda _: salvar_e_abrir_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos),
                     ),
                 ],
