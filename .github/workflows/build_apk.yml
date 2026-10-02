@@ -1,0 +1,54 @@
+name: Gerar APK Android - VocêEncontra 24H
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build-apk:
+    name: Compilar APK Android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Clonar repositório
+        uses: actions/checkout@v4
+
+      - name: ☕ Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🎯 Configurar Flutter SDK
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: 🐍 Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: 📦 Instalar dependências e Flet
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install "flet[all]>=0.25.0"
+
+      - name: 🛠️ Diagnóstico Flutter & Flet
+        run: |
+          flutter doctor -v
+          flet --version
+
+      - name: 🚀 Compilar APK do VocêEncontra 24H
+        run: |
+          flet build apk --project-name "voce_encontra_24h" --org "com.voceencontra" --product "VoceEncontra 24H"
+
+      - name: 📤 Disponibilizar APK para Download
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoceEncontra-24H-Android
+          path: build/apk/**
+          retention-days: 14

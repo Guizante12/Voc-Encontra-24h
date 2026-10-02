@@ -1,0 +1,17 @@
+# Arquivos de Chaves e Senhas
+.env
+
+# Arquivos e Planilhas Financeiras Pessoais
+*.pdf
+*.xlsx
+planilha_picpay*
+extrato_picpay*
+Felipe_Dias.py
+
+# Arquivos temporários gerados em execução
+mapa_*.html
+__pycache__/
+*.pyc
+build/
+dist/
+.flet/
