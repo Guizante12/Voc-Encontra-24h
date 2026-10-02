@@ -44,7 +44,7 @@ jobs:
 
       - name: 🚀 Compilar APK do VocêEncontra 24H
         run: |
-          flet build apk --project-name "voce_encontra_24h" --org "com.voceencontra" --product "VoceEncontra 24H"
+          flet build apk --org "com.voceencontra" --product "VoceEncontra 24H" -v
 
       - name: 📤 Disponibilizar APK para Download
         uses: actions/upload-artifact@v4
