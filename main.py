@@ -41,6 +41,184 @@ class SafeIcons:
 Icons = SafeIcons()
 Colors = SafeColors()
 
+# Compatibilidade universal de Padding para Android / Desktop (Flet 0.24, 0.25+)
+_OrigPadding = getattr(ft, "padding", None)
+_PaddingClass = getattr(ft, "Padding", getattr(_OrigPadding, "Padding", None))
+if not _PaddingClass:
+    try:
+        from flet_core.padding import Padding as _CorePadding
+        _PaddingClass = _CorePadding
+    except Exception:
+        try:
+            from flet.controls.padding import Padding as _ControlsPadding
+            _PaddingClass = _ControlsPadding
+        except Exception:
+            _PaddingClass = None
+
+class SafePadding:
+    @staticmethod
+    def symmetric(horizontal=0, vertical=0):
+        if _PaddingClass and hasattr(_PaddingClass, "symmetric"):
+            try:
+                return _PaddingClass.symmetric(vertical=vertical, horizontal=horizontal)
+            except Exception:
+                try:
+                    return _PaddingClass.symmetric(horizontal=horizontal, vertical=vertical)
+                except Exception:
+                    pass
+        if _OrigPadding and hasattr(_OrigPadding, "symmetric"):
+            try:
+                return _OrigPadding.symmetric(vertical=vertical, horizontal=horizontal)
+            except Exception:
+                try:
+                    return _OrigPadding.symmetric(horizontal=horizontal, vertical=vertical)
+                except Exception:
+                    pass
+        if _PaddingClass:
+            try:
+                return _PaddingClass(left=horizontal, right=horizontal, top=vertical, bottom=vertical)
+            except Exception:
+                pass
+        return vertical or horizontal
+
+    @staticmethod
+    def only(left=0, top=0, right=0, bottom=0):
+        if _PaddingClass and hasattr(_PaddingClass, "only"):
+            try:
+                return _PaddingClass.only(left=left, top=top, right=right, bottom=bottom)
+            except Exception:
+                pass
+        if _OrigPadding and hasattr(_OrigPadding, "only"):
+            try:
+                return _OrigPadding.only(left=left, top=top, right=right, bottom=bottom)
+            except Exception:
+                pass
+        if _PaddingClass:
+            try:
+                return _PaddingClass(left=left, top=top, right=right, bottom=bottom)
+            except Exception:
+                pass
+        return 0
+
+    @staticmethod
+    def all(val=0):
+        if _PaddingClass and hasattr(_PaddingClass, "all"):
+            try:
+                return _PaddingClass.all(val)
+            except Exception:
+                pass
+        if _OrigPadding and hasattr(_OrigPadding, "all"):
+            try:
+                return _OrigPadding.all(val)
+            except Exception:
+                pass
+        if _PaddingClass:
+            try:
+                return _PaddingClass(left=val, top=val, right=val, bottom=val)
+            except Exception:
+                pass
+        return val
+
+    def __getattr__(self, name):
+        if _PaddingClass and hasattr(_PaddingClass, name):
+            return getattr(_PaddingClass, name)
+        if _OrigPadding and hasattr(_OrigPadding, name):
+            return getattr(_OrigPadding, name)
+        return None
+
+safe_padding = SafePadding()
+ft.padding = safe_padding
+padding = safe_padding
+
+# Compatibilidade universal de Margin para Android / Desktop (Flet 0.24, 0.25+)
+_OrigMargin = getattr(ft, "margin", None)
+_MarginClass = getattr(ft, "Margin", getattr(_OrigMargin, "Margin", None))
+if not _MarginClass:
+    try:
+        from flet_core.margin import Margin as _CoreMargin
+        _MarginClass = _CoreMargin
+    except Exception:
+        try:
+            from flet.controls.margin import Margin as _ControlsMargin
+            _MarginClass = _ControlsMargin
+        except Exception:
+            _MarginClass = None
+
+class SafeMargin:
+    @staticmethod
+    def symmetric(horizontal=0, vertical=0):
+        if _MarginClass and hasattr(_MarginClass, "symmetric"):
+            try:
+                return _MarginClass.symmetric(vertical=vertical, horizontal=horizontal)
+            except Exception:
+                try:
+                    return _MarginClass.symmetric(horizontal=horizontal, vertical=vertical)
+                except Exception:
+                    pass
+        if _OrigMargin and hasattr(_OrigMargin, "symmetric"):
+            try:
+                return _OrigMargin.symmetric(vertical=vertical, horizontal=horizontal)
+            except Exception:
+                try:
+                    return _OrigMargin.symmetric(horizontal=horizontal, vertical=vertical)
+                except Exception:
+                    pass
+        if _MarginClass:
+            try:
+                return _MarginClass(left=horizontal, right=horizontal, top=vertical, bottom=vertical)
+            except Exception:
+                pass
+        return vertical or horizontal
+
+    @staticmethod
+    def only(left=0, top=0, right=0, bottom=0):
+        if _MarginClass and hasattr(_MarginClass, "only"):
+            try:
+                return _MarginClass.only(left=left, top=top, right=right, bottom=bottom)
+            except Exception:
+                pass
+        if _OrigMargin and hasattr(_OrigMargin, "only"):
+            try:
+                return _OrigMargin.only(left=left, top=top, right=right, bottom=bottom)
+            except Exception:
+                pass
+        if _MarginClass:
+            try:
+                return _MarginClass(left=left, top=top, right=right, bottom=bottom)
+            except Exception:
+                pass
+        return 0
+
+    @staticmethod
+    def all(val=0):
+        if _MarginClass and hasattr(_MarginClass, "all"):
+            try:
+                return _MarginClass.all(val)
+            except Exception:
+                pass
+        if _OrigMargin and hasattr(_OrigMargin, "all"):
+            try:
+                return _OrigMargin.all(val)
+            except Exception:
+                pass
+        if _MarginClass:
+            try:
+                return _MarginClass(left=val, top=val, right=val, bottom=val)
+            except Exception:
+                pass
+        return val
+
+    def __getattr__(self, name):
+        if _MarginClass and hasattr(_MarginClass, name):
+            return getattr(_MarginClass, name)
+        if _OrigMargin and hasattr(_OrigMargin, name):
+            return getattr(_OrigMargin, name)
+        return None
+
+safe_margin = SafeMargin()
+ft.margin = safe_margin
+margin = safe_margin
+
 # Patch de compatibilidade com Python 3.12 no Flet Desktop
 try:
     import flet_desktop
@@ -1151,7 +1329,7 @@ def main(page: ft.Page):
                                                                 color=Colors.WHITE,
                                                             ),
                                                             bgcolor=Colors.GREEN_700 if e_24h else "#475569",
-                                                            padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                                                            padding=padding.symmetric(horizontal=6, vertical=2),
                                                             border_radius=6,
                                                         ),
                                                         ft.Row(
@@ -1208,7 +1386,7 @@ def main(page: ft.Page):
                                                 alignment=ft.MainAxisAlignment.CENTER,
                                             ),
                                             bgcolor=Colors.GREEN_600,
-                                            padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                                            padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
                                             on_click=lambda e, tel=tel_str, nome=p["nome"]: webbrowser.open(
@@ -1226,7 +1404,7 @@ def main(page: ft.Page):
                                                 alignment=ft.MainAxisAlignment.CENTER,
                                             ),
                                             border=ft.border.all(1, Colors.BLUE_600 if not eh_dark else Colors.BLUE_300),
-                                            padding=ft.padding.symmetric(horizontal=12, vertical=8),
+                                            padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
                                             on_click=lambda e, n=p["nome"], t=tel_str: page.open(
@@ -1325,7 +1503,7 @@ def main(page: ft.Page):
     )
 
     header = ft.Container(
-        padding=ft.padding.only(left=14, right=14, top=14, bottom=6),
+        padding=padding.only(left=14, right=14, top=14, bottom=6),
         content=ft.Column(
             [
                 ft.Row(
@@ -1335,7 +1513,7 @@ def main(page: ft.Page):
                                 ft.Container(
                                     content=ft.Text("24H", size=11, weight=ft.FontWeight.BOLD, color=Colors.WHITE),
                                     bgcolor=Colors.BLUE_700,
-                                    padding=ft.padding.symmetric(horizontal=6, vertical=3),
+                                    padding=padding.symmetric(horizontal=6, vertical=3),
                                     border_radius=6,
                                 ),
                                 ft.Column(
@@ -1368,7 +1546,7 @@ def main(page: ft.Page):
                             color=Colors.GREY_600,
                         ),
                         ft.Container(
-                            padding=ft.padding.symmetric(horizontal=6, vertical=2),
+                            padding=padding.symmetric(horizontal=6, vertical=2),
                             border_radius=8,
                             bgcolor="#1E293B" if page.theme_mode == ft.ThemeMode.DARK else "#F1F5F9",
                             content=ft.Row(
@@ -1424,7 +1602,7 @@ def main(page: ft.Page):
     )
 
     barra_filtros = ft.Container(
-        padding=ft.padding.symmetric(horizontal=14),
+        padding=padding.symmetric(horizontal=14),
         content=ft.Row(
             [
                 ft.Row([texto_raio, slider_raio], spacing=4),
@@ -1437,7 +1615,7 @@ def main(page: ft.Page):
 
     card_mapa = ft.Card(
         elevation=4,
-        margin=ft.margin.symmetric(horizontal=12, vertical=2),
+        margin=margin.symmetric(horizontal=12, vertical=2),
         content=ft.Container(
             padding=12,
             border_radius=14,
@@ -1477,7 +1655,7 @@ def main(page: ft.Page):
                             spacing=8,
                         ),
                         bgcolor=Colors.WHITE,
-                        padding=ft.padding.symmetric(horizontal=16, vertical=10),
+                        padding=padding.symmetric(horizontal=16, vertical=10),
                         border_radius=10,
                         ink=True,
                         on_click=lambda _: salvar_e_abrir_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos),
@@ -1504,12 +1682,12 @@ def main(page: ft.Page):
         [
             header,
             ft.Container(
-                padding=ft.padding.symmetric(horizontal=12),
+                padding=padding.symmetric(horizontal=12),
                 content=campo_busca,
             ),
             # Grid de Serviços: Todos à mostra em quadradinhos
             ft.Container(
-                padding=ft.padding.symmetric(horizontal=12, vertical=4),
+                padding=padding.symmetric(horizontal=12, vertical=4),
                 content=ft.Column(
                     [
                         ft.Text("Categorias:", size=11, weight=ft.FontWeight.BOLD, color=Colors.GREY_500),
@@ -1522,7 +1700,7 @@ def main(page: ft.Page):
             progresso,
             card_mapa,
             ft.Container(
-                padding=ft.padding.only(left=14, right=14, top=4, bottom=14),
+                padding=padding.only(left=14, right=14, top=4, bottom=14),
                 content=ft.Column(
                     [
                         ft.Column([texto_categoria_titulo, texto_categoria_sub], spacing=1),
