@@ -9,6 +9,50 @@ import flet as ft
 from geopy.distance import geodesic
 from geopy.geocoders import Nominatim
 
+# Garante existência de ElevatedButton, OutlinedButton e TextButton em qualquer versão do Flet
+if not hasattr(ft, "ElevatedButton"):
+    class _SafeElevatedButton:
+        def __new__(cls, *args, **kwargs):
+            btn_cls = getattr(ft, "FilledButton", getattr(ft, "Button", None))
+            if btn_cls:
+                try:
+                    return btn_cls(*args, **kwargs)
+                except TypeError:
+                    txt = args[0] if args else kwargs.pop("text", None)
+                    icon = kwargs.pop("icon", None)
+                    content = ft.Row([ft.Icon(icon), ft.Text(txt)], alignment=ft.MainAxisAlignment.CENTER, tight=True) if icon and txt else ft.Text(txt or "")
+                    return btn_cls(content=content, **kwargs)
+            return ft.Container(content=ft.Text(args[0] if args else kwargs.get("text", "")), on_click=kwargs.get("on_click"))
+    ft.ElevatedButton = _SafeElevatedButton
+
+if not hasattr(ft, "OutlinedButton"):
+    class _SafeOutlinedButton:
+        def __new__(cls, *args, **kwargs):
+            btn_cls = getattr(ft, "Button", None)
+            if btn_cls:
+                try:
+                    return btn_cls(*args, **kwargs)
+                except TypeError:
+                    txt = args[0] if args else kwargs.pop("text", None)
+                    icon = kwargs.pop("icon", None)
+                    content = ft.Row([ft.Icon(icon), ft.Text(txt)], alignment=ft.MainAxisAlignment.CENTER, tight=True) if icon and txt else ft.Text(txt or "")
+                    return btn_cls(content=content, **kwargs)
+            return ft.Container(content=ft.Text(args[0] if args else kwargs.get("text", "")), on_click=kwargs.get("on_click"))
+    ft.OutlinedButton = _SafeOutlinedButton
+
+if not hasattr(ft, "TextButton"):
+    class _SafeTextButton:
+        def __new__(cls, *args, **kwargs):
+            btn_cls = getattr(ft, "Button", None)
+            if btn_cls:
+                try:
+                    return btn_cls(*args, **kwargs)
+                except TypeError:
+                    txt = args[0] if args else kwargs.pop("text", None)
+                    return btn_cls(content=ft.Text(txt or ""), **kwargs)
+            return ft.Container(content=ft.Text(args[0] if args else kwargs.get("text", "")), on_click=kwargs.get("on_click"))
+    ft.TextButton = _SafeTextButton
+
 # Compatibilidade segura com todas as versões do Flet (0.24, 0.25+)
 _IconsBase = getattr(ft, "Icons", getattr(ft, "icons", None))
 _ColorsBase = getattr(ft, "Colors", getattr(ft, "colors", None))
