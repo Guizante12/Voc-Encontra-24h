@@ -1,3 +1,4 @@
+# VocêEncontra 24H - Versão 3.2 Mobile Android
 import os
 import json
 import webbrowser
