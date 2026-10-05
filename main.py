@@ -1,4 +1,4 @@
-# VocêEncontra 24H - Versão 3.5 Mobile Android
+# VocêEncontra 24H - Versão 3.6 Mobile Android
 import os
 import sys
 import json
@@ -750,59 +750,70 @@ SERVICOS_APP = {
             },
         ],
     },
-    "cacamba": {
-        "nome": "Caçamba",
-        "icone": Icons.DELETE_OUTLINE,
-        "emoji": "🗑️",
-        "cor": "#795548",
-        "cor_badge": "#EFEBE9",
-        "subtitulo": "Locação de caçambas, entulho e resíduos de obras",
-        "gemini_query": "locacao de cacamba de entulho, recolhimento de residuos obras e reformas",
-        "osm_query": "cacamba entulho",
+    "servicos": {
+        "nome": "Serviços",
+        "icone": Icons.HANDYMAN if hasattr(_IconsBase, "HANDYMAN") else Icons.BUILD,
+        "emoji": "🛠️",
+        "cor": "#0284C7",
+        "cor_badge": "#E0F2FE",
+        "subtitulo": "Mecânica móvel, eletricistas, socorro auto e reparos 24h",
+        "gemini_query": "mecanica automotiva socorro, eletricista 24h, desentupidora, encanador e reparos 24 horas",
+        "osm_query": "mecanica",
         "padrao_locais": [
             {
-                "nome": "Caçambas Transbaron",
-                "endereco": "R. Alberico Flores Bueno, Bairro Alto",
-                "coords": (-25.4050, -49.2010),
-                "tel": "(41) 3256-4040",
-                "detalhe": "Entulho de Obras (3m³ a 5m³)",
-                "horario": "07:30 às 18:30",
-                "is_24h": False,
-                "avaliacao": "4.8",
-                "avaliacoes_qtd": "110",
-            },
-            {
-                "nome": "Leva Tudo Caçambas Plantão 24h",
-                "endereco": "R. Marechal Floriano Peixoto, Hauer",
-                "coords": (-25.4710, -49.2450),
-                "tel": "(41) 3376-1515",
-                "detalhe": "Resíduos de Reformas e Podas Rápidas",
-                "horario": "24 Horas",
-                "is_24h": True,
-                "avaliacao": "4.7",
-                "avaliacoes_qtd": "95",
-            },
-            {
-                "nome": "O Rei da Caçamba Entulho",
-                "endereco": "Av. Erasto Gaertner, Bacacheri",
-                "coords": (-25.3980, -49.2320),
-                "tel": "(41) 3356-7890",
-                "detalhe": "Gesso, Madeira, Concreto e Alvenaria",
-                "horario": "08:00 às 18:00",
-                "is_24h": False,
-                "avaliacao": "4.8",
-                "avaliacoes_qtd": "85",
-            },
-            {
-                "nome": "Entulho Já Caçambas 24h",
-                "endereco": "Linha Verde, Tarumã",
-                "coords": (-25.4280, -49.2220),
-                "tel": "(41) 3366-4444",
-                "detalhe": "Atendimento rápido inclusive fins de semana",
+                "nome": "Mecânica Móvel & Auto Socorro 24h",
+                "endereco": "Av. Presidente Kennedy, Água Verde",
+                "coords": (-25.4600, -49.2810),
+                "tel": "(41) 99188-3434",
+                "detalhe": "Atendimento Mecânico no Local: Baterias, Correias e Freios",
                 "horario": "24 Horas",
                 "is_24h": True,
                 "avaliacao": "4.9",
-                "avaliacoes_qtd": "75",
+                "avaliacoes_qtd": "198",
+            },
+            {
+                "nome": "SOS Eletricista Plantão Noturno 24h",
+                "endereco": "R. Emiliano Perneta, Centro",
+                "coords": (-25.4340, -49.2760),
+                "tel": "(41) 99876-1212",
+                "detalhe": "Curto-circuito, Padrão Copel, Fiação e Disjuntores",
+                "horario": "24 Horas",
+                "is_24h": True,
+                "avaliacao": "4.9",
+                "avaliacoes_qtd": "145",
+            },
+            {
+                "nome": "Oficina Mecânica Especializada Batel",
+                "endereco": "R. Coronel Dulcídio, Batel",
+                "coords": (-25.4390, -49.2850),
+                "tel": "(41) 3243-8800",
+                "detalhe": "Injeção eletrônica, freios, suspensão e alinhamento",
+                "horario": "08:00 às 18:30",
+                "is_24h": False,
+                "avaliacao": "4.7",
+                "avaliacoes_qtd": "112",
+            },
+            {
+                "nome": "Desentupidora & Hidráulica Ágil 24h",
+                "endereco": "Av. Marechal Floriano Peixoto, Parolin",
+                "coords": (-25.4620, -49.2610),
+                "tel": "(41) 3333-8000",
+                "detalhe": "Vazamentos, desentupimentos e reparos hidráulicos urgentes",
+                "horario": "24 Horas",
+                "is_24h": True,
+                "avaliacao": "4.8",
+                "avaliacoes_qtd": "230",
+            },
+            {
+                "nome": "Eletrotécnica & Manutenções Alto da XV",
+                "endereco": "R. Marechal Deodoro, Alto da XV",
+                "coords": (-25.4260, -49.2570),
+                "tel": "(41) 3362-5050",
+                "detalhe": "Instalações elétricas, quadros de força e iluminação",
+                "horario": "08:00 às 19:00",
+                "is_24h": False,
+                "avaliacao": "4.8",
+                "avaliacoes_qtd": "89",
             },
         ],
     },
@@ -1324,6 +1335,32 @@ def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=
                     pass
 
 
+def obter_localizacao_gps():
+    """Tenta obter a localização geográfica atual do usuário via provedor de geolocalização."""
+    try:
+        resp = requests.get("https://ipapi.co/json/", timeout=4)
+        if resp.status_code == 200:
+            d = resp.json()
+            lat = float(d.get("latitude"))
+            lng = float(d.get("longitude"))
+            cidade = d.get("city", "Curitiba")
+            bairro = d.get("region_code") or d.get("region", "PR")
+            return (lat, lng, f"{cidade}, {bairro}")
+    except Exception:
+        pass
+    try:
+        resp = requests.get("http://ip-api.com/json/", timeout=4)
+        if resp.status_code == 200:
+            d = resp.json()
+            lat = float(d.get("lat"))
+            lng = float(d.get("lon"))
+            cidade = d.get("city", "Curitiba")
+            return (lat, lng, f"{cidade}, PR")
+    except Exception:
+        pass
+    return None
+
+
 def main(page: ft.Page):
     # Compatibilidade universal para page.open e page.close (Flet 0.20 até 1.0+)
     if not hasattr(page, "open"):
@@ -1799,6 +1836,85 @@ def main(page: ft.Page):
             page.update()
             mostrar_snack(page, "Endereço ou CEP não localizado. Tente digitar o nome da rua ou bairro.")
 
+    def solicitar_permissao_localizacao(silencioso=False):
+        def acao_confirmar():
+            progresso.visible = True
+            safe_update()
+            loc = obter_localizacao_gps()
+            if loc:
+                nonlocal coords_atuais, endereco_atual
+                coords_atuais = (loc[0], loc[1])
+                endereco_atual = loc[2]
+                texto_local.value = f"📍 {endereco_atual[:34]}"
+                carregar_dados_busca()
+                mostrar_snack(page, f"GPS Atualizado: {endereco_atual}")
+            else:
+                progresso.visible = False
+                safe_update()
+                if not silencioso:
+                    mostrar_snack(page, "Não foi possível obter sinal GPS. Digite o endereço na busca.")
+
+        if silencioso:
+            acao_confirmar()
+            return
+
+        def fechar_dlg(e=None):
+            dlg.open = False
+            page.update()
+
+        def ativar_e_fechar(e=None):
+            fechar_dlg()
+            acao_confirmar()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Row(
+                [
+                    ft.Icon(Icons.MY_LOCATION, color=Colors.BLUE_500, size=20),
+                    ft.Text("Permissão de Localização", size=15, weight=ft.FontWeight.BOLD),
+                ],
+                spacing=6,
+            ),
+            content=ft.Text(
+                "O VocêEncontra 24H solicita acesso à sua localização geográfica para encontrar automaticamente mecânica, guinchos, farmácias, bebidas e serviços 24h mais próximos de onde você está.",
+                size=12,
+            ),
+            actions=[
+                ft.Container(
+                    content=ft.Text("Digitar Manualmente", size=11, color=Colors.GREY_500),
+                    padding=padding.symmetric(horizontal=8, vertical=6),
+                    on_click=fechar_dlg,
+                    ink=True,
+                ),
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(Icons.GPS_FIXED, color=Colors.WHITE, size=14),
+                            ft.Text("Ativar Meu GPS", color=Colors.WHITE, size=11, weight=ft.FontWeight.BOLD),
+                        ],
+                        spacing=4,
+                        tight=True,
+                    ),
+                    bgcolor=Colors.BLUE_700,
+                    padding=padding.symmetric(horizontal=12, vertical=8),
+                    border_radius=8,
+                    on_click=ativar_e_fechar,
+                    ink=True,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+        )
+
+        if hasattr(page, "open") and callable(page.open):
+            try:
+                page.open(dlg)
+                return
+            except Exception:
+                pass
+        page.dialog = dlg
+        dlg.open = True
+        page.update()
+
     def ao_mudar_raio(e):
         nonlocal raio_atual
         raio_atual = e.control.value
@@ -1850,10 +1966,30 @@ def main(page: ft.Page):
                 ),
                 ft.Row(
                     [
-                        texto_local := ft.Text(
-                            f"📍 {endereco_atual}",
-                            size=11,
-                            color=Colors.GREY_600,
+                        ft.Row(
+                            [
+                                texto_local := ft.Text(
+                                    f"📍 {endereco_atual}",
+                                    size=11,
+                                    color=Colors.GREY_600,
+                                ),
+                                ft.Container(
+                                    content=ft.Row(
+                                        [
+                                            ft.Icon(Icons.MY_LOCATION, size=10, color=Colors.BLUE_400),
+                                            ft.Text("Meu GPS", size=10, weight=ft.FontWeight.BOLD, color=Colors.BLUE_400),
+                                        ],
+                                        spacing=3,
+                                    ),
+                                    bgcolor=Colors.BLUE_900 if page.theme_mode == ft.ThemeMode.DARK else "#E0F2FE",
+                                    padding=padding.symmetric(horizontal=6, vertical=2),
+                                    border_radius=6,
+                                    ink=True,
+                                    on_click=lambda _: solicitar_permissao_localizacao(),
+                                ),
+                            ],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
                         ),
                         ft.Container(
                             padding=padding.symmetric(horizontal=6, vertical=2),
@@ -1861,8 +1997,8 @@ def main(page: ft.Page):
                             bgcolor="#1E293B" if page.theme_mode == ft.ThemeMode.DARK else "#F1F5F9",
                             content=ft.Row(
                                 [
-                                    ft.Icon(Icons.AUTO_AWESOME, size=11, color=Colors.AMBER_600),
-                                    ft.Text("Gemini IA", size=10, weight=ft.FontWeight.BOLD),
+                                    ft.Icon(Icons.RADIO_BUTTON_CHECKED, size=11, color=Colors.GREEN_500),
+                                    ft.Text("Radar Ativo", size=10, weight=ft.FontWeight.BOLD, color=Colors.GREEN_400 if page.theme_mode == ft.ThemeMode.DARK else Colors.GREEN_700),
                                 ],
                                 spacing=3,
                             ),
@@ -1878,10 +2014,24 @@ def main(page: ft.Page):
     campo_busca = ft.TextField(
         hint_text="Digite CEP, Rua, Bairro ou Ponto de Referência",
         prefix_icon=Icons.SEARCH,
-        suffix=ft.IconButton(
-            icon=Icons.ARROW_FORWARD,
-            tooltip="Buscar Localização",
-            on_click=lambda _: buscar_novo_endereco(),
+        suffix=ft.Row(
+            [
+                ft.IconButton(
+                    icon=Icons.MY_LOCATION,
+                    icon_size=18,
+                    icon_color=Colors.BLUE_500,
+                    tooltip="Obter minha localização GPS atual",
+                    on_click=lambda _: solicitar_permissao_localizacao(),
+                ),
+                ft.IconButton(
+                    icon=Icons.ARROW_FORWARD,
+                    icon_size=18,
+                    tooltip="Buscar Localização",
+                    on_click=lambda _: buscar_novo_endereco(),
+                ),
+            ],
+            tight=True,
+            spacing=0,
         ),
         on_submit=lambda _: buscar_novo_endereco(),
         height=46,
