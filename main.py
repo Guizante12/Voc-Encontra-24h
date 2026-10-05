@@ -330,7 +330,19 @@ geolocator = Nominatim(user_agent="voce_encontra_24h_app")
 
 # Localização inicial padrão (Curitiba - Centro)
 CLIENTE_COORDS_PADRAO = (-25.4284, -49.2733)
-CAMINHO_MAPA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mapa_interativo.html")
+
+import tempfile
+
+def obter_caminho_mapa():
+    try:
+        caminho_local = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mapa_interativo.html")
+        with open(caminho_local, "a", encoding="utf-8") as f:
+            pass
+        return caminho_local
+    except Exception:
+        return os.path.join(tempfile.gettempdir(), "mapa_interativo.html")
+
+CAMINHO_MAPA = obter_caminho_mapa()
 
 # Catálogo completo de Serviços (Todos os estabelecimentos + 24H)
 SERVICOS_APP = {
@@ -1172,14 +1184,133 @@ def gerar_html_mapa(lat_cliente, lng_cliente, lista_prestadores, prestador_selec
     return html
 
 
-def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None):
-    conteudo = gerar_html_mapa(lat, lng, prestadores, prestador_selecionado=prestador_selecionado)
-    with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
-        f.write(conteudo)
-    webbrowser.open(CAMINHO_MAPA)
+import threading
+from http.server import SimpleHTTPRequestHandler, HTTPServer
+
+_servidor_iniciado = False
+_porta_mapa = 8555
+
+def iniciar_servidor_mapa():
+    global _servidor_iniciado
+    if _servidor_iniciado:
+        return True
+    try:
+        diretorio = os.path.dirname(os.path.abspath(CAMINHO_MAPA))
+        class SilentHandler(SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=diretorio, **kwargs)
+            def log_message(self, format, *args):
+                pass
+        
+        server = HTTPServer(("127.0.0.1", _porta_mapa), SilentHandler)
+        t = threading.Thread(target=server.serve_forever, daemon=True)
+        t.start()
+        _servidor_iniciado = True
+        return True
+    except Exception as e:
+        print(f"Servidor mapa local: {e}")
+        return False
+
+def abrir_url(page: ft.Page, url: str):
+    """Abre links no Android via page.launch_url e no Desktop via webbrowser."""
+    if not url:
+        return False
+    try:
+        if page and hasattr(page, "launch_url"):
+            page.launch_url(url)
+            return True
+    except Exception:
+        pass
+    try:
+        import webbrowser
+        webbrowser.open(url)
+        return True
+    except Exception:
+        pass
+    return False
+
+def mostrar_snack(page: ft.Page, mensagem: str):
+    """Exibe SnackBar compatível com todas as versões do Flet (inclusive sem page.open)."""
+    if not page:
+        return
+    try:
+        if hasattr(page, "open"):
+            page.open(ft.SnackBar(ft.Text(mensagem), open=True))
+            return
+    except Exception:
+        pass
+    try:
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), open=True)
+        page.update()
+    except Exception:
+        pass
+
+def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=None, chave_servico="todos"):
+    try:
+        conteudo = gerar_html_mapa(lat, lng, prestadores, prestador_selecionado=prestador_selecionado)
+        with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
+            f.write(conteudo)
+    except Exception as e:
+        print(f"Erro ao salvar mapa: {e}")
+
+    iniciar_servidor_mapa()
+    nome_arquivo = os.path.basename(CAMINHO_MAPA)
+    url_local = f"http://127.0.0.1:{_porta_mapa}/{nome_arquivo}"
+
+    if prestador_selecionado:
+        p_lat, p_lng = prestador_selecionado["coords"]
+        url_maps = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lng}&destination={p_lat},{p_lng}&travelmode=driving"
+    else:
+        info_cat = SERVICOS_APP.get(chave_servico, SERVICOS_APP["todos"])
+        termo = info_cat["nome"] if chave_servico != "todos" else "servicos 24 horas"
+        url_maps = f"https://www.google.com/maps/search/{requests.utils.quote(termo)}/@{lat},{lng},14z"
+
+    if page:
+        aberto = abrir_url(page, url_local)
+        if not aberto:
+            abrir_url(page, url_maps)
+    else:
+        try:
+            import webbrowser
+            webbrowser.open(url_local)
+        except Exception:
+            try:
+                import webbrowser
+                webbrowser.open(url_maps)
+            except Exception:
+                pass
 
 
 def main(page: ft.Page):
+    # Compatibilidade universal para page.open e page.close (Flet 0.20 até 1.0+)
+    if not hasattr(page, "open"):
+        def _compat_open(control):
+            try:
+                if isinstance(control, ft.SnackBar):
+                    page.snack_bar = control
+                    page.snack_bar.open = True
+                    page.update()
+                elif isinstance(control, ft.AlertDialog):
+                    page.dialog = control
+                    page.dialog.open = True
+                    page.update()
+                else:
+                    page.overlay.append(control)
+                    page.update()
+            except Exception:
+                pass
+        page.open = _compat_open
+
+    if not hasattr(page, "close"):
+        def _compat_close(control):
+            try:
+                if hasattr(control, "open"):
+                    control.open = False
+                    page.update()
+            except Exception:
+                pass
+        page.close = _compat_close
+
     # Configuração da Janela e Tema
     page.title = "VocêEncontra 24H - Serviços, Emergências & Entregas"
     
@@ -1473,8 +1604,9 @@ def main(page: ft.Page):
                                             padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
-                                            on_click=lambda e, tel=tel_str, nome=p["nome"]: webbrowser.open(
-                                                gerar_link_whatsapp(tel, nome)
+                                            on_click=lambda e, tel=tel_str, nome=p["nome"]: (
+                                                abrir_url(page, gerar_link_whatsapp(tel, nome)),
+                                                mostrar_snack(page, f"Abrindo WhatsApp: {nome}...")
                                             ),
                                         ),
                                         ft.Container(
@@ -1491,8 +1623,9 @@ def main(page: ft.Page):
                                             padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
-                                            on_click=lambda e, n=p["nome"], t=tel_str: page.open(
-                                                ft.SnackBar(ft.Text(f"Contato {n}: {t}"))
+                                            on_click=lambda e, n=p["nome"], t=tel_str: (
+                                                abrir_url(page, f"tel:{re.sub(r'[^\d+]', '', t)}"),
+                                                mostrar_snack(page, f"Chamando {n}: {t}")
                                             ),
                                         ),
                                         ft.IconButton(
@@ -1505,20 +1638,22 @@ def main(page: ft.Page):
                                                     coords_atuais[1],
                                                     dados_servicos_exibidos,
                                                     prestador_selecionado=item,
+                                                    page=page,
+                                                    chave_servico=chave_servico_atual,
                                                 ),
-                                                page.open(
-                                                    ft.SnackBar(
-                                                        ft.Text(f"Rota calculada para {item['nome']} aberta no mapa!")
-                                                    )
-                                                ),
+                                                mostrar_snack(page, f"Calculando rota para {item['nome']}...")
                                             ),
                                         ),
                                         ft.IconButton(
                                             icon=Icons.OPEN_IN_NEW,
                                             icon_color=Colors.BLUE_700,
                                             tooltip="Abrir no Google Maps (GPS)",
-                                            on_click=lambda e, item=p: webbrowser.open(
-                                                f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={item['coords'][0]},{item['coords'][1]}&travelmode=driving"
+                                            on_click=lambda e, item=p: (
+                                                abrir_url(
+                                                    page,
+                                                    f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={item['coords'][0]},{item['coords'][1]}&travelmode=driving"
+                                                ),
+                                                mostrar_snack(page, f"Iniciando GPS no Google Maps para {item['nome']}...")
                                             ),
                                         ),
                                     ],
@@ -1743,7 +1878,16 @@ def main(page: ft.Page):
                         padding=padding.symmetric(horizontal=16, vertical=10),
                         border_radius=10,
                         ink=True,
-                        on_click=lambda _: salvar_e_abrir_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos),
+                        on_click=lambda _: (
+                            salvar_e_abrir_mapa(
+                                coords_atuais[0],
+                                coords_atuais[1],
+                                dados_servicos_exibidos,
+                                page=page,
+                                chave_servico=chave_servico_atual,
+                            ),
+                            mostrar_snack(page, "Carregando Radar e Mapa Completo...")
+                        ),
                     ),
                 ],
                 spacing=4,
