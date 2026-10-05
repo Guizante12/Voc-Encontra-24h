@@ -1,4 +1,4 @@
-# VocêEncontra 24H - Versão 3.4 Mobile Android
+# VocêEncontra 24H - Versão 3.5 Mobile Android
 import os
 import sys
 import json
@@ -1502,19 +1502,15 @@ def main(page: ft.Page):
             dados_servicos_exibidos = list(dados_servicos_completos)
 
         info_cat = SERVICOS_APP.get(chave_servico_atual, SERVICOS_APP["todos"])
-        origem = dados_servicos_completos[0].get("origem", "Sistema") if dados_servicos_completos else "Sistema"
+        origem = dados_servicos_completos[0].get("origem", "Base Verificada") if dados_servicos_completos else "Base Verificada"
         total_24h = sum(1 for p in dados_servicos_completos if p.get("is_24h"))
-        
-        texto_status_mapa.value = (
-            f"{len(dados_servicos_exibidos)} exibidos ({total_24h} funcionam 24h) via {origem} • {int(raio_atual)} km"
-        )
         
         if filtro_apenas_24h:
             texto_categoria_titulo.value = f"{info_cat['emoji']} {info_cat['nome']} • Filtro Apenas 24 Horas"
-            texto_categoria_sub.value = f"Mostrando somente locais com atendimento contínuo ({len(dados_servicos_exibidos)} encontrados)"
+            texto_categoria_sub.value = f"{len(dados_servicos_exibidos)} locais 24h encontrados via {origem} • Raio {int(raio_atual)} km"
         else:
             texto_categoria_titulo.value = f"{info_cat['emoji']} {info_cat['nome']} • Todos os Estabelecimentos"
-            texto_categoria_sub.value = f"{info_cat['subtitulo']} ({len(dados_servicos_exibidos)} no total, {total_24h} 24h)"
+            texto_categoria_sub.value = f"{len(dados_servicos_exibidos)} locais ({total_24h} 24h) via {origem} • Raio {int(raio_atual)} km"
 
         # Atualiza HTML do mapa Leaflet com a lista filtrada
         try:
@@ -1927,69 +1923,6 @@ def main(page: ft.Page):
         ),
     )
 
-    card_mapa = ft.Card(
-        elevation=4,
-        margin=margin.symmetric(horizontal=12, vertical=2),
-        content=ft.Container(
-            padding=12,
-            border_radius=14,
-            bgcolor=Colors.BLUE_900,
-            gradient=ft.LinearGradient(
-                begin=alignment.top_left,
-                end=alignment.bottom_right,
-                colors=[Colors.BLUE_900, Colors.BLUE_700],
-            ),
-            content=ft.Column(
-                [
-                    ft.Row(
-                        [
-                            ft.Icon(Icons.EXPLORE, color=Colors.WHITE, size=20),
-                            ft.Text(
-                                "Radar & Rotas GPS",
-                                size=13,
-                                weight=ft.FontWeight.BOLD,
-                                color=Colors.WHITE,
-                            ),
-                        ],
-                        spacing=6,
-                    ),
-                    texto_status_mapa,
-                    ft.Container(
-                        content=ft.Row(
-                            [
-                                ft.Icon(Icons.MAP, color=Colors.BLUE_900, size=18),
-                                ft.Text(
-                                    "Visualizar no Mapa Completo",
-                                    color=Colors.BLUE_900,
-                                    weight=ft.FontWeight.BOLD,
-                                    size=13,
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.CENTER,
-                            tight=True,
-                            spacing=8,
-                        ),
-                        bgcolor=Colors.WHITE,
-                        padding=padding.symmetric(horizontal=16, vertical=10),
-                        border_radius=10,
-                        ink=True,
-                        on_click=lambda _: (
-                            salvar_e_abrir_mapa(
-                                coords_atuais[0],
-                                coords_atuais[1],
-                                dados_servicos_exibidos,
-                                page=page,
-                                chave_servico=chave_servico_atual,
-                            ),
-                            mostrar_snack(page, "Carregando Radar e Mapa Completo...")
-                        ),
-                    ),
-                ],
-                spacing=4,
-            ),
-        ),
-    )
-
     texto_categoria_titulo = ft.Text(
         "🌟 Todos os Estabelecimentos",
         weight=ft.FontWeight.BOLD,
@@ -2022,7 +1955,6 @@ def main(page: ft.Page):
             ),
             barra_filtros,
             progresso,
-            card_mapa,
             ft.Container(
                 padding=padding.only(left=14, right=14, top=4, bottom=60),
                 content=ft.Column(
@@ -2038,6 +1970,7 @@ def main(page: ft.Page):
         scroll=ft.ScrollMode.AUTO,
         expand=True,
     )
+
 
     # Inicialização da interface antes de adicionar na página
     renderizar_grid_categorias(atualizar=False)
