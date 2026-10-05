@@ -26,6 +26,13 @@ jobs:
           channel: 'stable'
           cache: true
 
+      - name: 📜 Aceitar licenças do Android SDK
+        run: |
+          yes | flutter doctor --android-licenses || true
+          if [ -d "$ANDROID_HOME/cmdline-tools/latest/bin" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+          fi
+
       - name: 🐍 Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
