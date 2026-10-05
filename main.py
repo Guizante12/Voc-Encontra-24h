@@ -219,6 +219,90 @@ safe_margin = SafeMargin()
 ft.margin = safe_margin
 margin = safe_margin
 
+# Compatibilidade universal de Alignment para Android / Desktop (Flet 0.24, 0.25+)
+_OrigAlignment = getattr(ft, "alignment", None)
+_AlignmentClass = getattr(ft, "Alignment", getattr(_OrigAlignment, "Alignment", None))
+if not _AlignmentClass:
+    try:
+        from flet_core.alignment import Alignment as _CoreAlignment
+        _AlignmentClass = _CoreAlignment
+    except Exception:
+        try:
+            from flet.controls.alignment import Alignment as _ControlsAlignment
+            _AlignmentClass = _ControlsAlignment
+        except Exception:
+            _AlignmentClass = None
+
+class SafeAlignment:
+    _coords = {
+        "top_left": (-1.0, -1.0),
+        "top_center": (0.0, -1.0),
+        "top_right": (1.0, -1.0),
+        "center_left": (-1.0, 0.0),
+        "center": (0.0, 0.0),
+        "center_right": (1.0, 0.0),
+        "bottom_left": (-1.0, 1.0),
+        "bottom_center": (0.0, 1.0),
+        "bottom_right": (1.0, 1.0),
+    }
+
+    def __getattr__(self, name):
+        if _AlignmentClass and hasattr(_AlignmentClass, name):
+            return getattr(_AlignmentClass, name)
+        if _OrigAlignment and hasattr(_OrigAlignment, name):
+            return getattr(_OrigAlignment, name)
+        if _AlignmentClass and name in self._coords:
+            try:
+                x, y = self._coords[name]
+                return _AlignmentClass(x, y)
+            except Exception:
+                pass
+        return None
+
+safe_alignment = SafeAlignment()
+ft.alignment = safe_alignment
+alignment = safe_alignment
+
+# Compatibilidade universal de Border para Android / Desktop (Flet 0.24, 0.25+)
+_OrigBorder = getattr(ft, "border", None)
+_BorderClass = getattr(ft, "Border", getattr(_OrigBorder, "Border", None))
+if not _BorderClass:
+    try:
+        from flet_core.border import Border as _CoreBorder
+        _BorderClass = _CoreBorder
+    except Exception:
+        try:
+            from flet.controls.border import Border as _ControlsBorder
+            _BorderClass = _ControlsBorder
+        except Exception:
+            _BorderClass = None
+
+class SafeBorder:
+    @staticmethod
+    def all(width=1, color=None):
+        if _BorderClass and hasattr(_BorderClass, "all"):
+            try:
+                return _BorderClass.all(width=width, color=color)
+            except Exception:
+                pass
+        if _OrigBorder and hasattr(_OrigBorder, "all"):
+            try:
+                return _OrigBorder.all(width=width, color=color)
+            except Exception:
+                pass
+        return None
+
+    def __getattr__(self, name):
+        if _BorderClass and hasattr(_BorderClass, name):
+            return getattr(_BorderClass, name)
+        if _OrigBorder and hasattr(_OrigBorder, name):
+            return getattr(_OrigBorder, name)
+        return None
+
+safe_border = SafeBorder()
+ft.border = safe_border
+border = safe_border
+
 # Patch de compatibilidade com Python 3.12 no Flet Desktop
 try:
     import flet_desktop
@@ -1220,7 +1304,7 @@ def main(page: ft.Page):
                 height=66,
                 border_radius=12,
                 bgcolor=cor_bg,
-                border=ft.border.all(1.8 if selecionado else 1.0, cor_borda),
+                border=border.all(1.8 if selecionado else 1.0, cor_borda),
                 shadow=ft.BoxShadow(blur_radius=4, color="#00000022" if selecionado else Colors.TRANSPARENT) if not eh_dark else None,
                 ink=True,
                 on_click=lambda e, k=chave: selecionar_categoria(k),
@@ -1280,7 +1364,7 @@ def main(page: ft.Page):
                         spacing=8,
                     ),
                     padding=25,
-                    alignment=ft.alignment.center,
+                    alignment=alignment.center,
                 )
             )
         else:
@@ -1403,7 +1487,7 @@ def main(page: ft.Page):
                                                 tight=True,
                                                 alignment=ft.MainAxisAlignment.CENTER,
                                             ),
-                                            border=ft.border.all(1, Colors.BLUE_600 if not eh_dark else Colors.BLUE_300),
+                                            border=border.all(1, Colors.BLUE_600 if not eh_dark else Colors.BLUE_300),
                                             padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
@@ -1619,9 +1703,10 @@ def main(page: ft.Page):
         content=ft.Container(
             padding=12,
             border_radius=14,
+            bgcolor=Colors.BLUE_900,
             gradient=ft.LinearGradient(
-                begin=ft.alignment.top_left,
-                end=ft.alignment.bottom_right,
+                begin=alignment.top_left,
+                end=alignment.bottom_right,
                 colors=[Colors.BLUE_900, Colors.BLUE_700],
             ),
             content=ft.Column(
