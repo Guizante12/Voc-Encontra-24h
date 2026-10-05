@@ -1,9 +1,11 @@
-# VocêEncontra 24H - Versão 3.2 Mobile Android
+# VocêEncontra 24H - Versão 3.3 Mobile Android
 import os
+import sys
 import json
 import webbrowser
 import datetime
 import re
+import urllib.parse
 import requests
 import flet as ft
 from geopy.distance import geodesic
@@ -1034,7 +1036,7 @@ def gerar_link_whatsapp(telefone, nome_prestador):
     else:
         numero = f"5541{digitos}" if len(digitos) in [8, 9] else "5541999990000"
 
-    texto = requests.utils.quote(f"Olá, encontrei seu contato pelo app VocêEncontra 24H e gostaria de atendimento!")
+    texto = urllib.parse.quote("Olá, encontrei seu contato pelo app VocêEncontra 24H e gostaria de atendimento!")
     return f"https://wa.me/{numero}?text={texto}"
 
 
@@ -1230,22 +1232,23 @@ def abrir_url(page: ft.Page, url: str):
     return False
 
 def mostrar_snack(page: ft.Page, mensagem: str):
-    """Exibe SnackBar compatível com todas as versões do Flet (inclusive sem page.open)."""
+    """Exibe SnackBar compatível com todas as versões do Flet sem risco de exceção."""
     if not page:
         return
     try:
-        if hasattr(page, "open"):
-            page.open(ft.SnackBar(ft.Text(mensagem), open=True))
-            return
+        page.snack_bar = ft.SnackBar(ft.Text(mensagem), open=True)
+        page.update()
+        return
     except Exception:
         pass
     try:
-        page.snack_bar = ft.SnackBar(ft.Text(mensagem), open=True)
-        page.update()
+        if hasattr(page, "open") and callable(page.open):
+            page.open(ft.SnackBar(ft.Text(mensagem)))
     except Exception:
         pass
 
 def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=None, chave_servico="todos"):
+    """Abre rotas ou busca no Google Maps nativo (no celular) ou mapa interativo local (no Desktop)."""
     try:
         conteudo = gerar_html_mapa(lat, lng, prestadores, prestador_selecionado=prestador_selecionado)
         with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
@@ -1253,32 +1256,44 @@ def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=
     except Exception as e:
         print(f"Erro ao salvar mapa: {e}")
 
-    iniciar_servidor_mapa()
-    nome_arquivo = os.path.basename(CAMINHO_MAPA)
-    url_local = f"http://127.0.0.1:{_porta_mapa}/{nome_arquivo}"
-
     if prestador_selecionado:
         p_lat, p_lng = prestador_selecionado["coords"]
         url_maps = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lng}&destination={p_lat},{p_lng}&travelmode=driving"
     else:
         info_cat = SERVICOS_APP.get(chave_servico, SERVICOS_APP["todos"])
-        termo = info_cat["nome"] if chave_servico != "todos" else "servicos 24 horas"
-        url_maps = f"https://www.google.com/maps/search/{requests.utils.quote(termo)}/@{lat},{lng},14z"
+        termo = f"{info_cat['nome']} Curitiba" if chave_servico != "todos" else "servicos 24 horas Curitiba"
+        url_maps = f"https://www.google.com/maps/search/{urllib.parse.quote(termo)}/@{lat},{lng},14z"
 
-    if page:
-        aberto = abrir_url(page, url_local)
-        if not aberto:
+    # No celular Android, abre direto o Google Maps (app oficial nativo com GPS)
+    is_mobile = "ANDROID_ROOT" in os.environ or "ANDROID_DATA" in os.environ or sys.platform == "linux"
+
+    if is_mobile:
+        if page:
             abrir_url(page, url_maps)
-    else:
-        try:
-            import webbrowser
-            webbrowser.open(url_local)
-        except Exception:
+        else:
             try:
                 import webbrowser
                 webbrowser.open(url_maps)
             except Exception:
                 pass
+    else:
+        iniciar_servidor_mapa()
+        nome_arquivo = os.path.basename(CAMINHO_MAPA)
+        url_local = f"http://127.0.0.1:{_porta_mapa}/{nome_arquivo}"
+        if page:
+            aberto = abrir_url(page, url_local)
+            if not aberto:
+                abrir_url(page, url_maps)
+        else:
+            try:
+                import webbrowser
+                webbrowser.open(url_local)
+            except Exception:
+                try:
+                    import webbrowser
+                    webbrowser.open(url_maps)
+                except Exception:
+                    pass
 
 
 def main(page: ft.Page):
@@ -1317,6 +1332,7 @@ def main(page: ft.Page):
     hora_atual = datetime.datetime.now().hour
     tema_padrao_noite = hora_atual >= 18 or hora_atual < 6
     page.theme_mode = ft.ThemeMode.DARK if tema_padrao_noite else ft.ThemeMode.LIGHT
+    page.bgcolor = "#0B132B" if tema_padrao_noite else "#F8FAFC"
     
     page.padding = 0
     page.spacing = 0
@@ -1343,8 +1359,8 @@ def main(page: ft.Page):
     # Lista exibida atualmente (após aplicar filtro 24H se ativo)
     dados_servicos_exibidos = []
 
-    # Componentes de interface
-    lista_cards = ft.Column(spacing=10, scroll=ft.ScrollMode.AUTO, height=270)
+    # Componentes de interface (sem altura fixa para preencher a tela naturalmente)
+    lista_cards = ft.Column(spacing=10)
     progresso = ft.ProgressBar(visible=False, color=Colors.AMBER_500, bgcolor=Colors.TRANSPARENT)
 
     texto_status_mapa = ft.Text(
@@ -1355,6 +1371,7 @@ def main(page: ft.Page):
 
     def alternar_tema(e):
         page.theme_mode = ft.ThemeMode.LIGHT if page.theme_mode == ft.ThemeMode.DARK else ft.ThemeMode.DARK
+        page.bgcolor = "#0B132B" if page.theme_mode == ft.ThemeMode.DARK else "#F8FAFC"
         botao_tema.icon = Icons.LIGHT_MODE if page.theme_mode == ft.ThemeMode.DARK else Icons.DARK_MODE
         botao_tema.tooltip = "Mudar para modo claro" if page.theme_mode == ft.ThemeMode.DARK else "Mudar para modo escuro"
         renderizar_grid_categorias()
@@ -1365,9 +1382,14 @@ def main(page: ft.Page):
         nonlocal chave_servico_atual
         chave_servico_atual = chave
         if fechar_modal:
-            for d in page.overlay:
+            for d in list(getattr(page, "overlay", [])):
                 if isinstance(d, ft.AlertDialog):
-                    page.close(d)
+                    d.open = False
+                    try:
+                        page.close(d)
+                    except Exception:
+                        pass
+            page.update()
         renderizar_grid_categorias()
         carregar_dados_busca()
 
@@ -1467,9 +1489,12 @@ def main(page: ft.Page):
             texto_categoria_sub.value = f"{info_cat['subtitulo']} ({len(dados_servicos_exibidos)} no total, {total_24h} 24h)"
 
         # Atualiza HTML do mapa Leaflet com a lista filtrada
-        conteudo = gerar_html_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos)
-        with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
-            f.write(conteudo)
+        try:
+            conteudo = gerar_html_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos)
+            with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
+                f.write(conteudo)
+        except Exception as e:
+            print(f"Aviso ao salvar HTML do mapa: {e}")
 
         renderizar_cards_na_tela()
 
@@ -1604,6 +1629,7 @@ def main(page: ft.Page):
                                             padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
+                                            url=gerar_link_whatsapp(tel_str, p["nome"]),
                                             on_click=lambda e, tel=tel_str, nome=p["nome"]: (
                                                 abrir_url(page, gerar_link_whatsapp(tel, nome)),
                                                 mostrar_snack(page, f"Abrindo WhatsApp: {nome}...")
@@ -1623,6 +1649,7 @@ def main(page: ft.Page):
                                             padding=padding.symmetric(horizontal=12, vertical=8),
                                             border_radius=8,
                                             ink=True,
+                                            url=f"tel:{re.sub(r'[^\d+]', '', tel_str)}",
                                             on_click=lambda e, n=p["nome"], t=tel_str: (
                                                 abrir_url(page, f"tel:{re.sub(r'[^\d+]', '', t)}"),
                                                 mostrar_snack(page, f"Chamando {n}: {t}")
@@ -1632,6 +1659,7 @@ def main(page: ft.Page):
                                             icon=Icons.DIRECTIONS,
                                             icon_color=Colors.BLUE_600,
                                             tooltip="Traçar Rota no Mapa",
+                                            url=f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={p['coords'][0]},{p['coords'][1]}&travelmode=driving",
                                             on_click=lambda e, item=p: (
                                                 salvar_e_abrir_mapa(
                                                     coords_atuais[0],
@@ -1648,6 +1676,7 @@ def main(page: ft.Page):
                                             icon=Icons.OPEN_IN_NEW,
                                             icon_color=Colors.BLUE_700,
                                             tooltip="Abrir no Google Maps (GPS)",
+                                            url=f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={p['coords'][0]},{p['coords'][1]}&travelmode=driving",
                                             on_click=lambda e, item=p: (
                                                 abrir_url(
                                                     page,
@@ -1702,11 +1731,11 @@ def main(page: ft.Page):
             endereco_atual = resultado[2]
             texto_local.value = f"📍 {endereco_atual[:38]}..."
             carregar_dados_busca()
-            page.open(ft.SnackBar(ft.Text(f"Localizado com sucesso: {endereco_atual}")))
+            mostrar_snack(page, f"Localizado com sucesso: {endereco_atual}")
         else:
             progresso.visible = False
             page.update()
-            page.open(ft.SnackBar(ft.Text("Endereço ou CEP não localizado. Tente digitar o nome da rua ou bairro.")))
+            mostrar_snack(page, "Endereço ou CEP não localizado. Tente digitar o nome da rua ou bairro.")
 
     def ao_mudar_raio(e):
         nonlocal raio_atual
@@ -1722,7 +1751,7 @@ def main(page: ft.Page):
     )
 
     header = ft.Container(
-        padding=padding.only(left=14, right=14, top=14, bottom=6),
+        padding=padding.only(left=14, right=14, top=50, bottom=6),
         content=ft.Column(
             [
                 ft.Row(
@@ -1929,7 +1958,7 @@ def main(page: ft.Page):
             progresso,
             card_mapa,
             ft.Container(
-                padding=padding.only(left=14, right=14, top=4, bottom=14),
+                padding=padding.only(left=14, right=14, top=4, bottom=60),
                 content=ft.Column(
                     [
                         ft.Column([texto_categoria_titulo, texto_categoria_sub], spacing=1),
@@ -1941,6 +1970,7 @@ def main(page: ft.Page):
         ],
         spacing=4,
         scroll=ft.ScrollMode.AUTO,
+        expand=True,
     )
 
     # Inicialização da interface antes de adicionar na página
