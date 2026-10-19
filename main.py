@@ -2,6 +2,8 @@
 import os
 import sys
 import json
+import math
+import threading
 import webbrowser
 import datetime
 import re
@@ -875,9 +877,9 @@ def geocodificar_endereco_ou_cep(texto_busca):
 
 def buscar_prestadores_gemini(lat, lng, chave_servico="todos", endereco_busca="Curitiba, PR", raio_km=15):
     """
-    Consulta o Google Gemini para obter estabelecimentos (comerciais e 24h) da região.
+    Consulta o Google Gemini para obter estabelecimentos (comerciais e 24h) da região dentro do raio especificado.
     """
-    if not GEMINI_API_KEY:
+    if not GEMINI_API_KEY or len(GEMINI_API_KEY) < 20:
         return []
 
     info = SERVICOS_APP.get(chave_servico, SERVICOS_APP["todos"])
@@ -885,7 +887,7 @@ def buscar_prestadores_gemini(lat, lng, chave_servico="todos", endereco_busca="C
 
     prompt = f"""
     Você é um assistente de localização de estabelecimentos comerciais e serviços no Brasil.
-    Gere uma lista de 6 a 8 estabelecimentos e empresas reais e conhecidas de '{query_busca}' em '{endereco_busca}' ou num raio de {raio_km} km de ({lat}, {lng}).
+    Gere uma lista de 6 a 8 estabelecimentos e empresas reais e conhecidas de '{query_busca}' em '{endereco_busca}' num raio de até {raio_km} km de ({lat:.4f}, {lng:.4f}).
     
     IMPORTANTE: Inclua tanto estabelecimentos que funcionam 24 horas quanto os que atendem em horário comercial regular ou estendido.
     Para cada um, informe precisamente no campo "is_24h" (true ou false) e o horário aproximado de funcionamento no campo "horario".
@@ -895,7 +897,7 @@ def buscar_prestadores_gemini(lat, lng, chave_servico="todos", endereco_busca="C
       {{
         "nome": "Nome da Empresa ou Estabelecimento",
         "endereco": "Rua/Av, Bairro aproximado, Cidade",
-        "coords": [{lat} + 0.005, {lng} + 0.005],
+        "coords": [{lat:.4f}, {lng:.4f}],
         "tel": "(DD) 99999-9999",
         "tipo": "{chave_servico if chave_servico != 'todos' else 'geral'}",
         "detalhe": "Especialidade ou diferencial do local",
@@ -905,7 +907,7 @@ def buscar_prestadores_gemini(lat, lng, chave_servico="todos", endereco_busca="C
         "avaliacoes_qtd": "120"
       }}
     ]
-    Certifique-se de que coords seja um par numérico [latitude, longitude] coerente com a cidade informada.
+    Certifique-se de que coords seja um par numérico [latitude, longitude] num raio de até {raio_km} km de ({lat:.4f}, {lng:.4f}).
     """
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
@@ -927,25 +929,34 @@ def buscar_prestadores_gemini(lat, lng, chave_servico="todos", endereco_busca="C
             itens = json.loads(texto)
             prestadores = []
             for item in itens:
-                coords = tuple(item.get("coords", [lat, lng]))
-                dist = geodesic((lat, lng), coords).km
-                e_24h = bool(item.get("is_24h", False))
-                horario_str = str(item.get("horario", "24 Horas" if e_24h else "Horário Comercial"))
+                coords_raw = item.get("coords", [lat, lng])
+                if isinstance(coords_raw, (list, tuple)) and len(coords_raw) == 2:
+                    try:
+                        coords = (float(coords_raw[0]), float(coords_raw[1]))
+                    except Exception:
+                        coords = (lat, lng)
+                else:
+                    coords = (lat, lng)
 
-                prestadores.append({
-                    "nome": item.get("nome", info["nome"]),
-                    "endereco": item.get("endereco", endereco_busca),
-                    "coords": coords,
-                    "distancia": dist,
-                    "tipo": item.get("tipo", chave_servico),
-                    "tel": item.get("tel"),
-                    "detalhe": item.get("detalhe", "Atendimento de qualidade"),
-                    "horario": horario_str,
-                    "is_24h": e_24h,
-                    "avaliacao": str(item.get("avaliacao", "4.8")),
-                    "avaliacoes_qtd": str(item.get("avaliacoes_qtd", "95")),
-                    "origem": "Gemini IA"
-                })
+                dist = geodesic((lat, lng), coords).km
+                if dist <= raio_km:
+                    e_24h = bool(item.get("is_24h", False))
+                    horario_str = str(item.get("horario", "24 Horas" if e_24h else "Horário Comercial"))
+
+                    prestadores.append({
+                        "nome": item.get("nome", info["nome"]),
+                        "endereco": item.get("endereco", endereco_busca),
+                        "coords": coords,
+                        "distancia": dist,
+                        "tipo": item.get("tipo", chave_servico),
+                        "tel": item.get("tel"),
+                        "detalhe": item.get("detalhe", "Atendimento de qualidade"),
+                        "horario": horario_str,
+                        "is_24h": e_24h,
+                        "avaliacao": str(item.get("avaliacao", "4.8")),
+                        "avaliacoes_qtd": str(item.get("avaliacoes_qtd", "95")),
+                        "origem": "Gemini IA"
+                    })
             return prestadores
     except Exception as e:
         print(f"Aviso na consulta Gemini: {e}")
@@ -955,13 +966,14 @@ def buscar_prestadores_gemini(lat, lng, chave_servico="todos", endereco_busca="C
 
 def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_busca="Curitiba, PR"):
     """
-    Busca estabelecimentos com garantia de telefones reais (Base Verificada prioritária e OpenStreetMap).
+    Busca estabelecimentos com garantia de telefones reais (Base Verificada prioritária, Overpass API e OpenStreetMap).
+    Filtra rigorosamente pelo raio de distância selecionado.
     """
     info = SERVICOS_APP.get(chave_servico, SERVICOS_APP["todos"])
     prestadores = []
     nomes_adicionados = set()
 
-    # 1. Base Verificada com telefones reais de Curitiba (Prioridade Absoluta)
+    # 1. Base Verificada com telefones reais (apenas estabelecimentos DENTRO do raio de busca)
     padroes = []
     if chave_servico == "todos":
         for c_key, c_info in SERVICOS_APP.items():
@@ -972,7 +984,7 @@ def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_
 
     for p in padroes:
         dist = geodesic((lat, lng), p["coords"]).km
-        if dist <= raio_km or len(padroes) <= 6:
+        if dist <= raio_km:
             prestadores.append({
                 "nome": p["nome"],
                 "endereco": p["endereco"],
@@ -989,74 +1001,177 @@ def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_
             })
             nomes_adicionados.add(p["nome"].lower().strip())
 
-    # 2. Complementa com dados do OpenStreetMap com extratags para capturar telefones reais
-    termo = info.get("osm_query", "comercio")
-    if chave_servico == "todos":
-        termo = "servicos"
-    url = f"https://nominatim.openstreetmap.org/search?format=json&extratags=1&q={urllib.parse.quote(termo)}+curitiba&limit=10"
-    headers = {"User-Agent": "VoceEncontra24HApp/3.3"}
-
+    # 2. Busca estabelecimentos reais nas proximidades via Overpass API (OpenStreetMap)
+    overpass_tags = {
+        "guincho": '["craft"="car_repair"]',
+        "bebidas": '["shop"~"alcohol|beverages|convenience"]',
+        "gas": '["shop"="gas"]',
+        "farmacia": '["amenity"="pharmacy"]',
+        "postos": '["amenity"="fuel"]',
+        "chaveiro": '["shop"="locksmith"]',
+        "cacamba": '["amenity"="waste_disposal"]',
+        "comida": '["amenity"~"fast_food|restaurant"]',
+        "todos": '["amenity"~"pharmacy|fuel|fast_food"]',
+    }
+    filtro_tag = overpass_tags.get(chave_servico, '["amenity"~"pharmacy|fuel|fast_food"]')
+    raio_m = max(500, int(raio_km * 1000))
+    query_overpass = f"""
+    [out:json][timeout:4];
+    (
+      node{filtro_tag}(around:{raio_m},{lat},{lng});
+    );
+    out 12;
+    """
     try:
-        response = requests.get(url, headers=headers, timeout=3)
-        if response.status_code == 200:
-            dados = response.json()
-            for item in dados:
-                item_lat = float(item["lat"])
-                item_lng = float(item["lon"])
-                dist = geodesic((lat, lng), (item_lat, item_lng)).km
+        resp_op = requests.post(
+            "https://overpass-api.de/api/interpreter",
+            data={"data": query_overpass},
+            headers={"User-Agent": "VoceEncontra24HApp/3.6"},
+            timeout=3.5,
+        )
+        if resp_op.status_code == 200:
+            for elem in resp_op.json().get("elements", []):
+                e_lat = elem.get("lat")
+                e_lon = elem.get("lon")
+                if not e_lat or not e_lon:
+                    continue
+                dist = geodesic((lat, lng), (e_lat, e_lon)).km
+                if dist > raio_km:
+                    continue
+                tags = elem.get("tags", {})
+                nome_elem = tags.get("name")
+                if not nome_elem or nome_elem.lower().strip() in nomes_adicionados:
+                    continue
+                nomes_adicionados.add(nome_elem.lower().strip())
 
-                if dist <= raio_km:
-                    nome_completo = item.get("display_name", "Estabelecimento")
-                    partes = nome_completo.split(",")
-                    nome_curto = partes[0].strip()
+                rua = tags.get("addr:street", "")
+                numero = tags.get("addr:housenumber", "")
+                bairro = tags.get("addr:suburb", "")
+                cidade = tags.get("addr:city", "")
+                endereco_formatado = f"{rua} {numero}, {bairro}".strip(" ,") if rua else (cidade or "Endereço no mapa")
 
-                    if nome_curto.lower() in nomes_adicionados:
-                        continue
-                    nomes_adicionados.add(nome_curto.lower())
+                tel_raw = tags.get("phone") or tags.get("contact:phone") or tags.get("contact:whatsapp") or tags.get("contact:mobile")
+                tel_formatado = None
+                if tel_raw:
+                    tel_limpo = re.sub(r"[^\d+]", "", str(tel_raw))
+                    if len(tel_limpo) == 11:
+                        tel_formatado = f"({tel_limpo[:2]}) {tel_limpo[2:7]}-{tel_limpo[7:]}"
+                    elif len(tel_limpo) == 10:
+                        tel_formatado = f"({tel_limpo[:2]}) {tel_limpo[2:6]}-{tel_limpo[6:]}"
+                    else:
+                        tel_formatado = str(tel_raw)
 
-                    endereco = ", ".join(partes[1:3]).strip() if len(partes) > 2 else "Endereço no mapa"
+                e_24h = tags.get("opening_hours") == "24/7" or any(x in nome_elem.lower() for x in ["24h", "24 horas", "24 hrs", "plantão"])
+                horario_str = "Aberto 24 Horas" if e_24h else "Horário Comercial"
 
-                    # Extrai telefone real das tags do OpenStreetMap se existir
-                    extratags = item.get("extratags", {}) or {}
-                    tel_extra = (
-                        extratags.get("phone") or 
-                        extratags.get("contact:phone") or 
-                        extratags.get("contact:whatsapp") or 
-                        extratags.get("contact:mobile")
-                    )
-
-                    tel_formatado = None
-                    if tel_extra:
-                        tel_limpo = re.sub(r"[^\d+]", "", str(tel_extra))
-                        if len(tel_limpo) == 11:
-                            tel_formatado = f"({tel_limpo[:2]}) {tel_limpo[2:7]}-{tel_limpo[7:]}"
-                        elif len(tel_limpo) == 10:
-                            tel_formatado = f"({tel_limpo[:2]}) {tel_limpo[2:6]}-{tel_limpo[6:]}"
-                        else:
-                            tel_formatado = str(tel_extra)
-
-                    nome_lower = nome_completo.lower()
-                    e_24h = any(x in nome_lower for x in ["24h", "24 horas", "24 hrs", "plantão", "madrugada"]) or extratags.get("opening_hours") == "24/7"
-                    horario_str = "Aberto 24 Horas" if e_24h else "Horário Comercial"
-
-                    prestadores.append({
-                        "nome": nome_curto,
-                        "endereco": endereco,
-                        "coords": (item_lat, item_lng),
-                        "distancia": dist,
-                        "tipo": chave_servico,
-                        "tel": tel_formatado,
-                        "detalhe": "Localizado via OpenStreetMap",
-                        "horario": horario_str,
-                        "is_24h": e_24h,
-                        "avaliacao": "4.7",
-                        "avaliacoes_qtd": "75",
-                        "origem": "OpenStreetMap"
-                    })
+                prestadores.append({
+                    "nome": nome_elem,
+                    "endereco": endereco_formatado,
+                    "coords": (e_lat, e_lon),
+                    "distancia": dist,
+                    "tipo": chave_servico,
+                    "tel": tel_formatado,
+                    "detalhe": f"Localizado nas proximidades ({dist:.1f} km)",
+                    "horario": horario_str,
+                    "is_24h": e_24h,
+                    "avaliacao": "4.8",
+                    "avaliacoes_qtd": "85",
+                    "origem": "OpenStreetMap"
+                })
     except Exception as e:
-        print(f"Aviso busca Nominatim: {e}")
+        print(f"Aviso Overpass API: {e}")
 
-    # Ordena por proximidade do cliente
+    # 3. Complementa com dados do OpenStreetMap Nominatim dentro da área de busca
+    if len(prestadores) < 8:
+        termo = info.get("osm_query", "comercio")
+        if chave_servico == "todos":
+            termo = "servicos"
+
+        delta_lat = raio_km / 111.0
+        lat_rad = math.radians(lat)
+        cos_lat = math.cos(lat_rad) if abs(math.cos(lat_rad)) > 0.01 else 1.0
+        delta_lng = raio_km / (111.0 * cos_lat)
+        viewbox = f"{lng - delta_lng:.5f},{lat + delta_lat:.5f},{lng + delta_lng:.5f},{lat - delta_lat:.5f}"
+
+        cidade_termo = ""
+        if endereco_busca:
+            partes_end = endereco_busca.split(",")
+            cidade_termo = partes_end[0].strip() if len(partes_end) > 0 else ""
+
+        url = f"https://nominatim.openstreetmap.org/search?format=json&extratags=1&q={urllib.parse.quote(termo)}+{urllib.parse.quote(cidade_termo)}&viewbox={viewbox}&limit=12"
+        headers = {"User-Agent": "VoceEncontra24HApp/3.6"}
+
+        try:
+            response = requests.get(url, headers=headers, timeout=3)
+            if response.status_code == 200:
+                dados = response.json()
+                for item in dados:
+                    item_lat = float(item["lat"])
+                    item_lng = float(item["lon"])
+                    dist = geodesic((lat, lng), (item_lat, item_lng)).km
+
+                    if dist <= raio_km:
+                        nome_completo = item.get("display_name", "Estabelecimento")
+                        partes = nome_completo.split(",")
+                        nome_curto = partes[0].strip()
+
+                        if nome_curto.lower() in nomes_adicionados:
+                            continue
+                        nomes_adicionados.add(nome_curto.lower())
+
+                        endereco = ", ".join(partes[1:3]).strip() if len(partes) > 2 else "Endereço no mapa"
+
+                        extratags = item.get("extratags", {}) or {}
+                        tel_extra = (
+                            extratags.get("phone") or 
+                            extratags.get("contact:phone") or 
+                            extratags.get("contact:whatsapp") or 
+                            extratags.get("contact:mobile")
+                        )
+
+                        tel_formatado = None
+                        if tel_extra:
+                            tel_limpo = re.sub(r"[^\d+]", "", str(tel_extra))
+                            if len(tel_limpo) == 11:
+                                tel_formatado = f"({tel_limpo[:2]}) {tel_limpo[2:7]}-{tel_limpo[7:]}"
+                            elif len(tel_limpo) == 10:
+                                tel_formatado = f"({tel_limpo[:2]}) {tel_limpo[2:6]}-{tel_limpo[6:]}"
+                            else:
+                                tel_formatado = str(tel_extra)
+
+                        nome_lower = nome_completo.lower()
+                        e_24h = any(x in nome_lower for x in ["24h", "24 horas", "24 hrs", "plantão", "madrugada"]) or extratags.get("opening_hours") == "24/7"
+                        horario_str = "Aberto 24 Horas" if e_24h else "Horário Comercial"
+
+                        prestadores.append({
+                            "nome": nome_curto,
+                            "endereco": endereco,
+                            "coords": (item_lat, item_lng),
+                            "distancia": dist,
+                            "tipo": chave_servico,
+                            "tel": tel_formatado,
+                            "detalhe": "Localizado via OpenStreetMap",
+                            "horario": horario_str,
+                            "is_24h": e_24h,
+                            "avaliacao": "4.7",
+                            "avaliacoes_qtd": "75",
+                            "origem": "OpenStreetMap"
+                        })
+        except Exception as e:
+            print(f"Aviso busca Nominatim: {e}")
+
+    # 4. Fallback Gemini IA caso haja poucos estabelecimentos no raio
+    if len(prestadores) < 3 and GEMINI_API_KEY:
+        try:
+            itens_gemini = buscar_prestadores_gemini(lat, lng, chave_servico=chave_servico, endereco_busca=endereco_busca, raio_km=raio_km)
+            for item in itens_gemini:
+                if item["nome"].lower().strip() not in nomes_adicionados and item["distancia"] <= raio_km:
+                    prestadores.append(item)
+                    nomes_adicionados.add(item["nome"].lower().strip())
+        except Exception as e:
+            print(f"Aviso fallback Gemini: {e}")
+
+    # Ordena rigorosamente por proximidade do cliente
     prestadores.sort(key=lambda x: x["distancia"])
     return prestadores
 
@@ -1079,8 +1194,8 @@ def gerar_link_whatsapp(telefone, nome_prestador):
     return f"https://wa.me/{numero}?text={texto}"
 
 
-def gerar_html_mapa(lat_cliente, lng_cliente, lista_prestadores, prestador_selecionado=None):
-    """Gera o HTML do mapa Leaflet com marcadores estilizados."""
+def gerar_html_mapa(lat_cliente, lng_cliente, lista_prestadores, prestador_selecionado=None, raio_km=15):
+    """Gera o HTML do mapa Leaflet com marcadores estilizados e círculo do raio de busca."""
     markers_js = ""
     for p in lista_prestadores:
         p_lat, p_lng = p["coords"]
@@ -1210,6 +1325,16 @@ def gerar_html_mapa(lat_cliente, lng_cliente, lista_prestadores, prestador_selec
             attribution: '© Google Maps'
         }}).addTo(map);
 
+        // Círculo visual mostrando o raio de busca exato
+        var circleRaio = L.circle([{lat_cliente}, {lng_cliente}], {{
+            radius: {int(raio_km * 1000)},
+            color: '#3B82F6',
+            fillColor: '#3B82F6',
+            fillOpacity: 0.08,
+            weight: 2,
+            dashArray: '6, 6'
+        }}).addTo(map);
+
         L.circleMarker([{lat_cliente}, {lng_cliente}], {{
             color: '#1E40AF',
             fillColor: '#3B82F6',
@@ -1286,10 +1411,10 @@ def mostrar_snack(page: ft.Page, mensagem: str):
     except Exception:
         pass
 
-def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=None, chave_servico="todos"):
+def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=None, chave_servico="todos", raio_km=15):
     """Abre rotas ou busca no Google Maps nativo (no celular) ou mapa interativo local (no Desktop)."""
     try:
-        conteudo = gerar_html_mapa(lat, lng, prestadores, prestador_selecionado=prestador_selecionado)
+        conteudo = gerar_html_mapa(lat, lng, prestadores, prestador_selecionado=prestador_selecionado, raio_km=raio_km)
         with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
             f.write(conteudo)
     except Exception as e:
@@ -1300,7 +1425,7 @@ def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=
         url_maps = f"https://www.google.com/maps/dir/?api=1&origin={lat},{lng}&destination={p_lat},{p_lng}&travelmode=driving"
     else:
         info_cat = SERVICOS_APP.get(chave_servico, SERVICOS_APP["todos"])
-        termo = f"{info_cat['nome']} Curitiba" if chave_servico != "todos" else "servicos 24 horas Curitiba"
+        termo = f"{info_cat['nome']} 24 horas" if chave_servico != "todos" else "servicos 24 horas"
         url_maps = f"https://www.google.com/maps/search/{urllib.parse.quote(termo)}/@{lat},{lng},14z"
 
     # No celular Android, abre direto o Google Maps (app oficial nativo com GPS)
@@ -1336,28 +1461,38 @@ def salvar_e_abrir_mapa(lat, lng, prestadores, prestador_selecionado=None, page=
 
 
 def obter_localizacao_gps():
-    """Tenta obter a localização geográfica atual do usuário via provedor de geolocalização."""
-    try:
-        resp = requests.get("https://ipapi.co/json/", timeout=4)
-        if resp.status_code == 200:
-            d = resp.json()
-            lat = float(d.get("latitude"))
-            lng = float(d.get("longitude"))
-            cidade = d.get("city", "Curitiba")
-            bairro = d.get("region_code") or d.get("region", "PR")
-            return (lat, lng, f"{cidade}, {bairro}")
-    except Exception:
-        pass
-    try:
-        resp = requests.get("http://ip-api.com/json/", timeout=4)
-        if resp.status_code == 200:
-            d = resp.json()
-            lat = float(d.get("lat"))
-            lng = float(d.get("lon"))
-            cidade = d.get("city", "Curitiba")
-            return (lat, lng, f"{cidade}, PR")
-    except Exception:
-        pass
+    """Tenta obter a localização geográfica atual do usuário com fallback de múltiplos provedores HTTPS e geocodificação reversa."""
+    provedores = [
+        ("https://ipwho.is/", lambda d: (float(d["latitude"]), float(d["longitude"]), d.get("city", ""), d.get("region_code") or d.get("region", ""))),
+        ("https://freeipapi.com/api/json", lambda d: (float(d["latitude"]), float(d["longitude"]), d.get("cityName", ""), d.get("regionName", ""))),
+        ("https://ipapi.co/json/", lambda d: (float(d["latitude"]), float(d["longitude"]), d.get("city", ""), d.get("region_code") or d.get("region", ""))),
+    ]
+
+    for url, extractor in provedores:
+        try:
+            resp = requests.get(url, timeout=3.5)
+            if resp.status_code == 200:
+                d = resp.json()
+                if d.get("success", True) is not False:
+                    lat, lng, cidade, regiao = extractor(d)
+                    if lat and lng:
+                        endereco_legivel = f"{cidade}, {regiao}".strip(", ") if cidade else "Minha Localização"
+                        try:
+                            loc = geolocator.reverse((lat, lng), timeout=3, language="pt")
+                            if loc and loc.raw and "address" in loc.raw:
+                                addr = loc.raw["address"]
+                                cid = addr.get("city") or addr.get("town") or addr.get("municipality") or addr.get("village") or cidade
+                                bai = addr.get("suburb") or addr.get("neighbourhood") or addr.get("quarter")
+                                est = addr.get("state_code") or addr.get("state") or regiao
+                                if bai and cid:
+                                    endereco_legivel = f"{cid} ({bai}), {est}"
+                                elif cid:
+                                    endereco_legivel = f"{cid}, {est}"
+                        except Exception:
+                            pass
+                        return (lat, lng, endereco_legivel)
+        except Exception:
+            continue
     return None
 
 
@@ -1551,7 +1686,7 @@ def main(page: ft.Page):
 
         # Atualiza HTML do mapa Leaflet com a lista filtrada
         try:
-            conteudo = gerar_html_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos)
+            conteudo = gerar_html_mapa(coords_atuais[0], coords_atuais[1], dados_servicos_exibidos, raio_km=raio_atual)
             with open(CAMINHO_MAPA, "w", encoding="utf-8") as f:
                 f.write(conteudo)
         except Exception as e:
@@ -1767,6 +1902,7 @@ def main(page: ft.Page):
                                                     prestador_selecionado=item,
                                                     page=page,
                                                     chave_servico=chave_servico_atual,
+                                                    raio_km=raio_atual,
                                                 ),
                                                 mostrar_snack(page, f"Calculando rota para {item['nome']}...")
                                             ),
@@ -1915,9 +2051,13 @@ def main(page: ft.Page):
         dlg.open = True
         page.update()
 
-    def ao_mudar_raio(e):
+    def ao_mudar_raio_visual(e):
+        texto_raio.value = f"Raio: {int(e.control.value)} km"
+        page.update()
+
+    def ao_confirmar_raio(e):
         nonlocal raio_atual
-        raio_atual = e.control.value
+        raio_atual = float(e.control.value)
         texto_raio.value = f"Raio: {int(raio_atual)} km"
         carregar_dados_busca()
 
@@ -2043,10 +2183,11 @@ def main(page: ft.Page):
         min=2,
         max=50,
         divisions=24,
-        value=15,
+        value=raio_atual,
         label="{value} km",
         active_color=Colors.BLUE_600,
-        on_change=ao_mudar_raio,
+        on_change=ao_mudar_raio_visual,
+        on_change_end=ao_confirmar_raio,
     )
 
     texto_raio = ft.Text(
@@ -2126,6 +2267,19 @@ def main(page: ft.Page):
     renderizar_grid_categorias(atualizar=False)
     page.add(conteudo_principal)
     carregar_dados_busca()
+
+    # Detecção automática de GPS em segundo plano para inicializar com a cidade real do usuário
+    def auto_detectar_localizacao():
+        loc = obter_localizacao_gps()
+        if loc:
+            nonlocal coords_atuais, endereco_atual
+            coords_atuais = (loc[0], loc[1])
+            endereco_atual = loc[2]
+            texto_local.value = f"📍 {endereco_atual[:34]}"
+            carregar_dados_busca()
+            safe_update()
+
+    threading.Thread(target=auto_detectar_localizacao, daemon=True).start()
 
 
 # Inicialização compatível com Flet 1.0+ (ft.run) e versões legadas (ft.app)
