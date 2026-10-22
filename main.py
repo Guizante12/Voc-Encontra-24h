@@ -3613,11 +3613,13 @@ def main(page: ft.Page):
                 chave_servico=chave_servico_atual,
                 raio_km=raio_atual,
             )
-            barra_navegacao.selected_index = 0
+            if hasattr(page, "navigation_bar") and page.navigation_bar:
+                page.navigation_bar.selected_index = 0
             safe_update()
         elif idx == 2:
             abrir_modal_sos()
-            barra_navegacao.selected_index = 0
+            if hasattr(page, "navigation_bar") and page.navigation_bar:
+                page.navigation_bar.selected_index = 0
             safe_update()
         elif idx == 3:
             filtro_apenas_favoritos = True
@@ -3625,20 +3627,22 @@ def main(page: ft.Page):
             if not any(p.get("nome") in favoritos for p in dados_servicos_completos):
                 mostrar_snack(page, "Dica: Toque na estrela (⭐) de qualquer estabelecimento para salvá-lo aqui!")
 
-    barra_navegacao = ft.NavigationBar(
-        destinations=[
-            ft.NavigationDestination(icon=Icons.HOME_OUTLINED, selected_icon=Icons.HOME, label="Início"),
-            ft.NavigationDestination(icon=Icons.MAP_OUTLINED, selected_icon=Icons.MAP, label="Mapa"),
-            ft.NavigationDestination(icon=Icons.LOCAL_HOSPITAL_OUTLINED, selected_icon=Icons.LOCAL_HOSPITAL, label="S.O.S"),
-            ft.NavigationDestination(icon=Icons.STAR_BORDER, selected_icon=Icons.STAR, label="Favoritos"),
-        ],
-        on_change=ao_mudar_aba,
-        bgcolor="#1E293B" if page.theme_mode == ft.ThemeMode.DARK else "#FFFFFF",
-    )
     try:
-        page.navigation_bar = barra_navegacao
-    except Exception:
-        pass
+        _NavDest = getattr(ft, "NavigationBarDestination", getattr(ft, "NavigationDestination", None))
+        if _NavDest and hasattr(ft, "NavigationBar"):
+            barra_navegacao = ft.NavigationBar(
+                destinations=[
+                    _NavDest(icon=Icons.HOME, label="Início"),
+                    _NavDest(icon=Icons.MAP, label="Mapa"),
+                    _NavDest(icon=Icons.LOCAL_HOSPITAL, label="S.O.S"),
+                    _NavDest(icon=Icons.STAR, label="Favoritos"),
+                ],
+                on_change=ao_mudar_aba,
+                bgcolor="#1E293B" if page.theme_mode == ft.ThemeMode.DARK else "#FFFFFF",
+            )
+            page.navigation_bar = barra_navegacao
+    except Exception as e:
+        print(f"Aviso barra navegacao: {e}")
 
 
     # Inicialização da interface antes de adicionar na página
