@@ -2484,6 +2484,10 @@ def main(page: ft.Page):
         botao_tema.tooltip = "Mudar para modo claro" if page.theme_mode == ft.ThemeMode.DARK else "Mudar para modo escuro"
         renderizar_grid_categorias()
         renderizar_cards_na_tela()
+        try:
+            renderizar_dock_inferior()
+        except Exception:
+            pass
         page.update()
 
     def selecionar_categoria(chave, fechar_modal=False):
@@ -3597,14 +3601,19 @@ def main(page: ft.Page):
         expand=True,
     )
 
-    # Barra Inferior de Navegação (Bottom Navigation Bar)
-    def ao_mudar_aba(e):
-        idx = getattr(e.control, "selected_index", 0)
-        nonlocal filtro_apenas_favoritos
-        if idx == 0:
+    # Barra Inferior Fixa (Dock) com 100% de Compatibilidade no Android e Desktop
+    aba_ativa = 0  # 0: Início, 1: Mapa, 2: SOS, 3: Favoritos
+    container_dock = ft.Container()
+
+    def mudar_aba_dock(nova_aba):
+        nonlocal aba_ativa, filtro_apenas_favoritos
+        aba_ativa = nova_aba
+        
+        if nova_aba == 0:
             filtro_apenas_favoritos = False
             aplicar_filtro_e_renderizar()
-        elif idx == 1:
+            mostrar_snack(page, "Mostrando todos os serviços")
+        elif nova_aba == 1:
             salvar_e_abrir_mapa(
                 coords_atuais[0],
                 coords_atuais[1],
@@ -3613,41 +3622,92 @@ def main(page: ft.Page):
                 chave_servico=chave_servico_atual,
                 raio_km=raio_atual,
             )
-            if hasattr(page, "navigation_bar") and page.navigation_bar:
-                page.navigation_bar.selected_index = 0
-            safe_update()
-        elif idx == 2:
+            mostrar_snack(page, "Abrindo Mapa Geral...")
+        elif nova_aba == 2:
             abrir_modal_sos()
-            if hasattr(page, "navigation_bar") and page.navigation_bar:
-                page.navigation_bar.selected_index = 0
-            safe_update()
-        elif idx == 3:
+        elif nova_aba == 3:
             filtro_apenas_favoritos = True
             aplicar_filtro_e_renderizar()
             if not any(p.get("nome") in favoritos for p in dados_servicos_completos):
                 mostrar_snack(page, "Dica: Toque na estrela (⭐) de qualquer estabelecimento para salvá-lo aqui!")
+            else:
+                mostrar_snack(page, f"Exibindo {len(dados_servicos_exibidos)} locais favoritados ⭐")
 
-    try:
-        _NavDest = getattr(ft, "NavigationBarDestination", getattr(ft, "NavigationDestination", None))
-        if _NavDest and hasattr(ft, "NavigationBar"):
-            barra_navegacao = ft.NavigationBar(
-                destinations=[
-                    _NavDest(icon=Icons.HOME, label="Início"),
-                    _NavDest(icon=Icons.MAP, label="Mapa"),
-                    _NavDest(icon=Icons.LOCAL_HOSPITAL, label="S.O.S"),
-                    _NavDest(icon=Icons.STAR, label="Favoritos"),
-                ],
-                on_change=ao_mudar_aba,
-                bgcolor="#1E293B" if page.theme_mode == ft.ThemeMode.DARK else "#FFFFFF",
+        renderizar_dock_inferior()
+        safe_update()
+
+    def renderizar_dock_inferior():
+        eh_dark = page.theme_mode == ft.ThemeMode.DARK
+        cor_bg = "#0B132B" if eh_dark else "#FFFFFF"
+        cor_borda = "#1E293B" if eh_dark else "#E2E8F0"
+        cor_ativa = Colors.BLUE_500 if eh_dark else Colors.BLUE_600
+        cor_inativa = Colors.GREY_500 if eh_dark else Colors.GREY_600
+
+        itens_dock = [
+            (0, Icons.HOME, "Início"),
+            (1, Icons.MAP, "Mapa"),
+            (2, Icons.LOCAL_HOSPITAL, "S.O.S"),
+            (3, Icons.STAR, "Favoritos"),
+        ]
+
+        botoes_row = []
+        for id_aba, icone, rotulo in itens_dock:
+            ativa = (aba_ativa == id_aba)
+            cor_item = cor_ativa if ativa else cor_inativa
+            
+            botoes_row.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Icon(icone, color=cor_item, size=22),
+                            ft.Text(
+                                rotulo,
+                                size=11,
+                                weight=ft.FontWeight.BOLD if ativa else ft.FontWeight.W_500,
+                                color=cor_item
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.CENTER,
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                        spacing=2,
+                    ),
+                    padding=padding.symmetric(horizontal=8, vertical=6),
+                    border_radius=8,
+                    bgcolor=Colors.BLUE_950 if (ativa and eh_dark) else ("#EFF6FF" if ativa else Colors.TRANSPARENT),
+                    ink=True,
+                    expand=True,
+                    on_click=lambda _, a=id_aba: mudar_aba_dock(a),
+                )
             )
-            page.navigation_bar = barra_navegacao
-    except Exception as e:
-        print(f"Aviso barra navegacao: {e}")
 
+        container_dock.content = ft.Row(
+            botoes_row,
+            alignment=ft.MainAxisAlignment.SPACE_AROUND,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+        )
+        container_dock.padding = padding.symmetric(horizontal=6, vertical=4)
+        container_dock.bgcolor = cor_bg
+        container_dock.border = border.only(top=border.BorderSide(1, cor_borda))
+
+    # Remove qualquer navigation_bar instável da janela
+    try:
+        page.navigation_bar = None
+    except Exception:
+        pass
+
+    layout_principal = ft.Column(
+        [
+            conteudo_principal,
+            container_dock,
+        ],
+        spacing=0,
+        expand=True,
+    )
 
     # Inicialização da interface antes de adicionar na página
     renderizar_grid_categorias(atualizar=False)
-    page.add(conteudo_principal)
+    renderizar_dock_inferior()
+    page.add(layout_principal)
     carregar_dados_busca()
 
     # Salva a localização ativa caso ainda não esteja persistida
