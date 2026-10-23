@@ -313,6 +313,109 @@ safe_border = SafeBorder()
 ft.border = safe_border
 border = safe_border
 
+# Compatibilidade universal de Botões para Flet 0.24, 0.25, 0.28 e Flet 1.0+
+_BaseElevatedButton = getattr(ft, "ElevatedButton", None)
+_BaseButton = getattr(ft, "Button", None)
+_BaseFilledButton = getattr(ft, "FilledButton", None)
+_BaseTextButton = getattr(ft, "TextButton", None)
+_BaseOutlinedButton = getattr(ft, "OutlinedButton", None)
+
+def _criar_botao_container(text=None, icon=None, color=None, bgcolor=None, border_color=None, on_click=None, width=None):
+    cor_texto = color or (Colors.WHITE if bgcolor else Colors.BLUE_600)
+    itens = []
+    if icon:
+        itens.append(ft.Icon(icon, color=cor_texto, size=16))
+    if text:
+        itens.append(ft.Text(str(text), color=cor_texto, size=12, weight=ft.FontWeight.BOLD))
+    
+    return ft.Container(
+        content=ft.Row(itens, spacing=6, tight=True, alignment=ft.MainAxisAlignment.CENTER),
+        bgcolor=bgcolor,
+        border=border.all(1, border_color) if border_color else None,
+        padding=padding.symmetric(horizontal=12, vertical=8),
+        border_radius=8,
+        width=width,
+        alignment=alignment.center if width else None,
+        on_click=on_click,
+    )
+
+class SafeElevatedButton:
+    def __new__(cls, text=None, *args, **kwargs):
+        if _BaseElevatedButton is not None:
+            try:
+                return _BaseElevatedButton(text, *args, **kwargs)
+            except Exception:
+                pass
+        if _BaseButton is not None:
+            kw = dict(kwargs)
+            if text is not None and "content" not in kw:
+                kw["content"] = text
+            try:
+                return _BaseButton(*args, **kw)
+            except Exception:
+                pass
+        return _criar_botao_container(
+            text=text,
+            icon=kwargs.get("icon"),
+            color=kwargs.get("color"),
+            bgcolor=kwargs.get("bgcolor", Colors.BLUE_600),
+            on_click=kwargs.get("on_click"),
+            width=kwargs.get("width"),
+        )
+
+class SafeOutlinedButton:
+    def __new__(cls, text=None, *args, **kwargs):
+        if _BaseOutlinedButton is not None:
+            try:
+                return _BaseOutlinedButton(text, *args, **kwargs)
+            except Exception:
+                pass
+        if _BaseButton is not None:
+            kw = dict(kwargs)
+            if text is not None and "content" not in kw:
+                kw["content"] = text
+            try:
+                return _BaseButton(*args, **kw)
+            except Exception:
+                pass
+        return _criar_botao_container(
+            text=text,
+            icon=kwargs.get("icon"),
+            color=kwargs.get("color", Colors.BLUE_600),
+            border_color=kwargs.get("color", Colors.BLUE_600),
+            on_click=kwargs.get("on_click"),
+            width=kwargs.get("width"),
+        )
+
+class SafeTextButton:
+    def __new__(cls, text=None, *args, **kwargs):
+        if _BaseTextButton is not None:
+            try:
+                return _BaseTextButton(text, *args, **kwargs)
+            except Exception:
+                pass
+        if _BaseButton is not None:
+            kw = dict(kwargs)
+            if text is not None and "content" not in kw:
+                kw["content"] = text
+            try:
+                return _BaseButton(*args, **kw)
+            except Exception:
+                pass
+        return ft.Container(
+            content=ft.Text(str(text or ""), color=kwargs.get("color", Colors.BLUE_600), size=12, weight=ft.FontWeight.BOLD),
+            padding=padding.symmetric(horizontal=8, vertical=6),
+            on_click=kwargs.get("on_click"),
+        )
+
+# Injeção no módulo ft e escopo global
+ft.ElevatedButton = SafeElevatedButton
+ft.OutlinedButton = SafeOutlinedButton
+ft.TextButton = SafeTextButton
+ElevatedButton = SafeElevatedButton
+OutlinedButton = SafeOutlinedButton
+TextButton = SafeTextButton
+
 # Patch de compatibilidade com Python 3.12 no Flet Desktop
 try:
     import flet_desktop
