@@ -51,7 +51,7 @@ jobs:
 
       - name: 🚀 Compilar APK do VocêEncontra 24H
         run: |
-          yes | flet build apk --org "com.voceencontra" --product "VoceEncontra 24H" --android-permissions android.permission.ACCESS_FINE_LOCATION=true --android-permissions android.permission.ACCESS_COARSE_LOCATION=true -v
+          yes | flet build apk --org "com.voceencontra" --product "VoceEncontra 24H" --android-permissions android.permission.ACCESS_FINE_LOCATION=true --android-permissions android.permission.ACCESS_COARSE_LOCATION=true --android-permissions android.permission.INTERNET=true --android-permissions android.permission.ACCESS_NETWORK_STATE=true -v
 
       - name: 📤 Disponibilizar APK para Download
         uses: actions/upload-artifact@v4

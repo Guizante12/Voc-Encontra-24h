@@ -2211,10 +2211,14 @@ def main(page: ft.Page):
     
     page.padding = 0
     page.spacing = 0
-    page.window.width = 440
-    page.window.height = 800
-    page.window.min_width = 380
-    page.window.min_height = 680
+    try:
+        if hasattr(page, "window") and page.window:
+            page.window.width = 440
+            page.window.height = 800
+            page.window.min_width = 380
+            page.window.min_height = 680
+    except Exception:
+        pass
 
     def safe_update():
         try:
@@ -2248,24 +2252,33 @@ def main(page: ft.Page):
     filtro_apenas_24h = False  # Controle do filtro 24H
     filtro_apenas_favoritos = False  # Controle do filtro de Favoritos
 
-    # Sistema de Favoritos Persistentes
+    # Sistema de Favoritos Persistentes com suporte a Android (diretório gravável)
     def carregar_favoritos():
-        try:
-            caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_usuario.json")
-            if os.path.exists(caminho):
-                with open(caminho, "r", encoding="utf-8") as f:
-                    return set(json.load(f))
-        except Exception:
-            pass
+        caminhos = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_usuario.json"),
+            os.path.join(tempfile.gettempdir(), "favoritos_usuario.json"),
+        ]
+        for caminho in caminhos:
+            try:
+                if os.path.exists(caminho):
+                    with open(caminho, "r", encoding="utf-8") as f:
+                        return set(json.load(f))
+            except Exception:
+                continue
         return set()
 
     def salvar_favoritos(favs):
-        try:
-            caminho = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_usuario.json")
-            with open(caminho, "w", encoding="utf-8") as f:
-                json.dump(list(favs), f, ensure_ascii=False)
-        except Exception:
-            pass
+        caminhos = [
+            os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_usuario.json"),
+            os.path.join(tempfile.gettempdir(), "favoritos_usuario.json"),
+        ]
+        for caminho in caminhos:
+            try:
+                with open(caminho, "w", encoding="utf-8") as f:
+                    json.dump(list(favs), f, ensure_ascii=False)
+                break
+            except Exception:
+                continue
 
     favoritos = carregar_favoritos()
 
@@ -2278,6 +2291,8 @@ def main(page: ft.Page):
             mostrar_snack(page, f"⭐ Salvo nos favoritos: {nome_estab}")
         salvar_favoritos(favoritos)
         renderizar_cards_na_tela()
+        if aba_ativa == 3:
+            renderizar_view_favoritos()
         safe_update()
 
     def copiar_para_clipboard(texto, label="Copiado"):
@@ -2289,7 +2304,8 @@ def main(page: ft.Page):
             mostrar_snack(page, f"{label}: {texto}")
 
     def ligar_emergencia(num, rotulo):
-        abrir_url(page, f"tel:{num}")
+        num_limpo = re.sub(r"[^\d+]", "", str(num))
+        abrir_url(page, f"tel:{num_limpo}")
         mostrar_snack(page, f"🚨 Discando para {rotulo} ({num})...")
 
     def abrir_modal_sos(e=None):
@@ -2485,10 +2501,16 @@ def main(page: ft.Page):
         renderizar_grid_categorias()
         renderizar_cards_na_tela()
         try:
+            if aba_ativa == 1:
+                renderizar_view_mapa()
+            elif aba_ativa == 2:
+                renderizar_view_sos()
+            elif aba_ativa == 3:
+                renderizar_view_favoritos()
             renderizar_dock_inferior()
         except Exception:
             pass
-        page.update()
+        safe_update()
 
     def selecionar_categoria(chave, fechar_modal=False):
         nonlocal chave_servico_atual
@@ -2801,8 +2823,6 @@ def main(page: ft.Page):
                                                     bgcolor=Colors.GREEN_600,
                                                     padding=padding.symmetric(horizontal=10, vertical=7),
                                                     border_radius=8,
-                                                    ink=True,
-                                                    url=gerar_link_whatsapp(tel_str, p["nome"]),
                                                     on_click=lambda e, tel=tel_str, nome=p["nome"]: (
                                                         abrir_url(page, gerar_link_whatsapp(tel, nome)),
                                                         mostrar_snack(page, f"Abrindo WhatsApp: {nome}...")
@@ -2821,8 +2841,6 @@ def main(page: ft.Page):
                                                     border=border.all(1, Colors.BLUE_600 if not eh_dark else Colors.BLUE_300),
                                                     padding=padding.symmetric(horizontal=10, vertical=7),
                                                     border_radius=8,
-                                                    ink=True,
-                                                    url=f"tel:{re.sub(r'[^\d+]', '', tel_str)}",
                                                     on_click=lambda e, n=p["nome"], t=tel_str: (
                                                         abrir_url(page, f"tel:{re.sub(r'[^\d+]', '', t)}"),
                                                         mostrar_snack(page, f"Chamando {n}: {t}")
@@ -2856,7 +2874,6 @@ def main(page: ft.Page):
                                             icon=Icons.DIRECTIONS,
                                             icon_color=Colors.BLUE_600,
                                             tooltip="Traçar Rota no Mapa",
-                                            url=f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={p['coords'][0]},{p['coords'][1]}&travelmode=driving",
                                             on_click=lambda e, item=p: (
                                                 salvar_e_abrir_mapa(
                                                     coords_atuais[0],
@@ -2874,7 +2891,6 @@ def main(page: ft.Page):
                                             icon=Icons.OPEN_IN_NEW,
                                             icon_color=Colors.BLUE_700,
                                             tooltip="Abrir no Google Maps (GPS)",
-                                            url=f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={p['coords'][0]},{p['coords'][1]}&travelmode=driving",
                                             on_click=lambda e, item=p: (
                                                 abrir_url(
                                                     page,
@@ -3532,7 +3548,14 @@ def main(page: ft.Page):
             [
                 ft.Row(
                     [
-                        ft.Row([texto_raio, slider_raio], spacing=4),
+                        ft.Row(
+                            [
+                                texto_raio,
+                                ft.Container(content=slider_raio, width=150),
+                            ],
+                            spacing=4,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
                         switch_filtro_24h,
                     ],
                     alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
@@ -3562,16 +3585,20 @@ def main(page: ft.Page):
         color=Colors.GREY_500,
     )
 
-    # Montagem geral da Página
-    conteudo_principal = ft.Column(
+    # -------------------------------------------------------------
+    # SISTEMA DE NAVEGAÇÃO MULTI-ABAS (100% Compatível com Android APK e Desktop)
+    # 0: Início | 1: Mapa | 2: S.O.S (Central de Emergências) | 3: Favoritos
+    # -------------------------------------------------------------
+    aba_ativa = 0
+
+    # 1. ABA INÍCIO (Catálogo Geral de Serviços 24H - S.O.S removido daqui conforme solicitado)
+    view_inicio = ft.Column(
         [
             header,
             ft.Container(
                 padding=padding.symmetric(horizontal=12),
                 content=campo_busca,
             ),
-            # Card SOS Emergência Direta
-            card_sos_emergencia,
             # Grid de Serviços: Todos à mostra em quadradinhos
             ft.Container(
                 padding=padding.symmetric(horizontal=12, vertical=4),
@@ -3586,7 +3613,7 @@ def main(page: ft.Page):
             barra_filtros,
             progresso,
             ft.Container(
-                padding=padding.only(left=14, right=14, top=4, bottom=60),
+                padding=padding.only(left=14, right=14, top=4, bottom=30),
                 content=ft.Column(
                     [
                         ft.Column([texto_categoria_titulo, texto_categoria_sub], spacing=1),
@@ -3601,8 +3628,562 @@ def main(page: ft.Page):
         expand=True,
     )
 
-    # Barra Inferior Fixa (Dock) com 100% de Compatibilidade no Android e Desktop
-    aba_ativa = 0  # 0: Início, 1: Mapa, 2: SOS, 3: Favoritos
+    # 2. ABA MAPA (Visualização de Mapa, Rotas GPS e Locais Mais Próximos)
+    view_mapa = ft.Column(
+        spacing=8,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+
+    def renderizar_view_mapa():
+        view_mapa.controls.clear()
+        eh_dark = page.theme_mode == ft.ThemeMode.DARK
+        bg_card = "#1E293B" if eh_dark else "#FFFFFF"
+        borda_card = "#334155" if eh_dark else "#E2E8F0"
+
+        header_mapa = ft.Container(
+            padding=padding.only(left=14, right=14, top=50, bottom=6),
+            content=ft.Row(
+                [
+                    ft.Column(
+                        [
+                            ft.Text("🗺️ Mapa & Navegação GPS", size=18, weight=ft.FontWeight.BOLD),
+                            ft.Text("Rotas em tempo real e locais abertos mais próximos", size=11, color=Colors.GREY_500),
+                        ],
+                        spacing=1,
+                    ),
+                    ft.IconButton(
+                        icon=Icons.REFRESH,
+                        tooltip="Atualizar Mapa",
+                        on_click=lambda _: (renderizar_view_mapa(), safe_update()),
+                    ),
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+        )
+
+        card_posicao = ft.Container(
+            padding=14,
+            border_radius=12,
+            bgcolor=bg_card,
+            border=border.all(1, borda_card),
+            content=ft.Column(
+                [
+                    ft.Row(
+                        [
+                            ft.Icon(Icons.MY_LOCATION, color=Colors.BLUE_500, size=18),
+                            ft.Text("Localização de Referência", size=13, weight=ft.FontWeight.BOLD),
+                        ],
+                        spacing=6,
+                    ),
+                    ft.Text(endereco_atual, size=12, color=Colors.GREY_400 if eh_dark else Colors.GREY_700),
+                    ft.Text(f"GPS: {coords_atuais[0]:.4f}, {coords_atuais[1]:.4f} • Raio de busca: {int(raio_atual)} km", size=10, color=Colors.GREY_500),
+                    ft.Row(
+                        [
+                            ft.ElevatedButton(
+                                "Atualizar via GPS",
+                                icon=Icons.GPS_FIXED,
+                                color=Colors.WHITE,
+                                bgcolor=Colors.BLUE_600,
+                                on_click=solicitar_permissao_gps_modal,
+                            ),
+                            ft.OutlinedButton(
+                                "Trocar Cidade",
+                                icon=Icons.EDIT_LOCATION,
+                                on_click=abrir_modal_localizacao,
+                            ),
+                        ],
+                        spacing=8,
+                        wrap=True,
+                    ),
+                ],
+                spacing=8,
+            ),
+        )
+
+        card_acoes = ft.Container(
+            padding=14,
+            border_radius=12,
+            bgcolor=bg_card,
+            border=border.all(1, borda_card),
+            content=ft.Column(
+                [
+                    ft.Text("Abrir em Aplicativos de Navegação:", size=12, weight=ft.FontWeight.BOLD),
+                    ft.ElevatedButton(
+                        "📍 Abrir Radar no Google Maps",
+                        icon=Icons.MAP,
+                        color=Colors.WHITE,
+                        bgcolor=Colors.BLUE_700,
+                        width=360,
+                        on_click=lambda _: salvar_e_abrir_mapa(
+                            coords_atuais[0],
+                            coords_atuais[1],
+                            dados_servicos_exibidos,
+                            page=page,
+                            chave_servico=chave_servico_atual,
+                            raio_km=raio_atual,
+                        ),
+                    ),
+                    ft.ElevatedButton(
+                        "🧭 Navegar com Waze",
+                        icon=Icons.NAVIGATION,
+                        color=Colors.WHITE,
+                        bgcolor=Colors.CYAN_700,
+                        width=360,
+                        on_click=lambda _: abrir_url(
+                            page,
+                            f"https://waze.com/ul?ll={coords_atuais[0]},{coords_atuais[1]}&navigate=yes"
+                        ),
+                    ),
+                ],
+                spacing=8,
+            ),
+        )
+
+        itens_proximos = []
+        locais_ordenados = sorted(dados_servicos_completos, key=lambda x: x.get("distancia", 999))[:8]
+        for p in locais_ordenados:
+            dist = p.get("distancia", 0)
+            itens_proximos.append(
+                ft.Container(
+                    padding=10,
+                    border_radius=10,
+                    bgcolor=bg_card,
+                    border=border.all(1, borda_card),
+                    content=ft.Row(
+                        [
+                            ft.Column(
+                                [
+                                    ft.Text(p["nome"], size=12, weight=ft.FontWeight.BOLD, overflow=ft.TextOverflow.ELLIPSIS),
+                                    ft.Text(f"{dist:.1f} km • {p.get('endereco', '')[:32]}...", size=10, color=Colors.GREY_500),
+                                ],
+                                expand=True,
+                                spacing=2,
+                            ),
+                            ft.IconButton(
+                                icon=Icons.DIRECTIONS,
+                                icon_color=Colors.BLUE_600,
+                                tooltip="Traçar Rota",
+                                on_click=lambda _, item=p: abrir_url(
+                                    page,
+                                    f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={item['coords'][0]},{item['coords'][1]}&travelmode=driving"
+                                ),
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
+                )
+            )
+
+        secao_locais = ft.Container(
+            padding=padding.symmetric(horizontal=14),
+            content=ft.Column(
+                [
+                    ft.Text(f"Estabelecimentos Mais Próximos de Você:", size=12, weight=ft.FontWeight.BOLD),
+                    *(itens_proximos if itens_proximos else [
+                        ft.Text("Nenhum local carregado ainda. Tente atualizar a busca.", size=11, italic=True, color=Colors.GREY_500)
+                    ]),
+                ],
+                spacing=8,
+            ),
+        )
+
+        view_mapa.controls.extend([
+            header_mapa,
+            ft.Container(padding=padding.symmetric(horizontal=14), content=card_posicao),
+            ft.Container(padding=padding.symmetric(horizontal=14), content=card_acoes),
+            secao_locais,
+            ft.Container(height=40),
+        ])
+
+    # 3. ABA S.O.S (Central Oficial de Emergências - Aba Devida com Telefones de Utilidade Pública)
+    view_sos = ft.Column(
+        spacing=8,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+
+    def renderizar_view_sos():
+        view_sos.controls.clear()
+        eh_dark = page.theme_mode == ft.ThemeMode.DARK
+        bg_card = "#1E293B" if eh_dark else "#FFFFFF"
+        borda_card = "#334155" if eh_dark else "#E2E8F0"
+
+        header_sos = ft.Container(
+            padding=padding.only(left=14, right=14, top=50, bottom=6),
+            content=ft.Row(
+                [
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Icon(Icons.LOCAL_HOSPITAL, color=Colors.WHITE, size=18),
+                                bgcolor=Colors.RED_600,
+                                padding=6,
+                                border_radius=8,
+                            ),
+                            ft.Column(
+                                [
+                                    ft.Text("Central de Emergências 24H", size=18, weight=ft.FontWeight.BOLD),
+                                    ft.Text("Discagem direta e serviços de socorro imediato", size=11, color=Colors.GREY_500),
+                                ],
+                                spacing=1,
+                            ),
+                        ],
+                        spacing=8,
+                    ),
+                    botao_tema,
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+        )
+
+        # Bloco de Emergência Top 3 com toque direto
+        botoes_rapidos = ft.Container(
+            padding=padding.symmetric(horizontal=14),
+            content=ft.Column(
+                [
+                    ft.Text("🚨 Discagem Imediata (Toque para Ligar):", size=11, weight=ft.FontWeight.BOLD, color=Colors.RED_500 if eh_dark else Colors.RED_700),
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Column(
+                                    [
+                                        ft.Text("192", size=18, weight=ft.FontWeight.BOLD, color=Colors.WHITE),
+                                        ft.Text("SAMU", size=10, weight=ft.FontWeight.W_500, color=Colors.WHITE70),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                    spacing=1,
+                                ),
+                                bgcolor="#DC2626",
+                                padding=padding.symmetric(vertical=10, horizontal=8),
+                                border_radius=10,
+                                expand=True,
+                                on_click=lambda _: ligar_emergencia("192", "SAMU (Ambulância)"),
+                            ),
+                            ft.Container(
+                                content=ft.Column(
+                                    [
+                                        ft.Text("190", size=18, weight=ft.FontWeight.BOLD, color=Colors.WHITE),
+                                        ft.Text("Polícia", size=10, weight=ft.FontWeight.W_500, color=Colors.WHITE70),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                    spacing=1,
+                                ),
+                                bgcolor="#1D4ED8",
+                                padding=padding.symmetric(vertical=10, horizontal=8),
+                                border_radius=10,
+                                expand=True,
+                                on_click=lambda _: ligar_emergencia("190", "Polícia Militar"),
+                            ),
+                            ft.Container(
+                                content=ft.Column(
+                                    [
+                                        ft.Text("193", size=18, weight=ft.FontWeight.BOLD, color=Colors.WHITE),
+                                        ft.Text("Bombeiros", size=10, weight=ft.FontWeight.W_500, color=Colors.WHITE70),
+                                    ],
+                                    alignment=ft.MainAxisAlignment.CENTER,
+                                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                                    spacing=1,
+                                ),
+                                bgcolor="#D97706",
+                                padding=padding.symmetric(vertical=10, horizontal=8),
+                                border_radius=10,
+                                expand=True,
+                                on_click=lambda _: ligar_emergencia("193", "Bombeiros (Resgate)"),
+                            ),
+                        ],
+                        spacing=8,
+                    ),
+                ],
+                spacing=6,
+            ),
+        )
+
+        telefones_emergencia = [
+            ("192", "SAMU", "Ambulância e Emergência Médica", Colors.RED_600, "🚑"),
+            ("190", "Polícia Militar", "Segurança pública e patrulhamento", Colors.BLUE_700, "👮"),
+            ("193", "Bombeiros", "Incêndio, salvamento e resgate", Colors.AMBER_800, "🚒"),
+            ("191", "Polícia Rodoviária Federal", "Socorro e acidentes em rodovias federais", Colors.BLUE_900, "🛣️"),
+            ("198", "Polícia Rodoviária Estadual", "Rodovias estaduais", Colors.BLUE_800, "🚔"),
+            ("153", "Guarda Municipal", "Apoio e segurança urbana", Colors.TEAL_700, "🛡️"),
+            ("199", "Defesa Civil", "Alagamentos, desastres e desabamentos", Colors.ORANGE_800, "⚠️"),
+            ("0800 51 00 116", "Copel", "Falta de luz e risco elétrico 24h", Colors.GREEN_800, "⚡"),
+            ("0800 041 0115", "Sanepar", "Vazamento de água e esgoto 24h", Colors.CYAN_800, "💧"),
+        ]
+
+        linhas_sos = []
+        for num, titulo, desc, cor, emo in telefones_emergencia:
+            linhas_sos.append(
+                ft.Container(
+                    padding=padding.symmetric(horizontal=12, vertical=10),
+                    border_radius=10,
+                    bgcolor=bg_card,
+                    border=border.all(1, borda_card),
+                    content=ft.Row(
+                        [
+                            ft.Row(
+                                [
+                                    ft.Text(emo, size=18),
+                                    ft.Column(
+                                        [
+                                            ft.Row(
+                                                [
+                                                    ft.Text(titulo, size=13, weight=ft.FontWeight.BOLD),
+                                                    ft.Container(
+                                                        content=ft.Text(num, size=11, weight=ft.FontWeight.BOLD, color=Colors.WHITE),
+                                                        bgcolor=cor,
+                                                        padding=padding.symmetric(horizontal=6, vertical=2),
+                                                        border_radius=6,
+                                                    ),
+                                                ],
+                                                spacing=6,
+                                            ),
+                                            ft.Text(desc, size=10, color=Colors.GREY_500),
+                                        ],
+                                        spacing=2,
+                                        expand=True,
+                                    ),
+                                ],
+                                spacing=8,
+                                expand=True,
+                            ),
+                            ft.Row(
+                                [
+                                    ft.IconButton(
+                                        icon=Icons.CONTENT_COPY,
+                                        icon_size=15,
+                                        icon_color=Colors.GREY_500,
+                                        tooltip=f"Copiar número {num}",
+                                        on_click=lambda _, n=num: copiar_para_clipboard(n, "Número copiado"),
+                                    ),
+                                    ft.IconButton(
+                                        icon=Icons.PHONE,
+                                        icon_color=Colors.WHITE,
+                                        bgcolor=Colors.GREEN_600,
+                                        icon_size=16,
+                                        tooltip=f"Ligar para {titulo}",
+                                        on_click=lambda _, n=num, t=titulo: ligar_emergencia(n, t),
+                                    ),
+                                ],
+                                spacing=2,
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                    ),
+                )
+            )
+
+        def ir_para_categoria(chave):
+            mudar_aba_dock(0)
+            selecionar_categoria(chave)
+
+        atalhos_socorro = ft.Container(
+            padding=padding.symmetric(horizontal=14),
+            content=ft.Column(
+                [
+                    ft.Text("🔧 Socorro 24 Horas Rápido (Ver Locais):", size=12, weight=ft.FontWeight.BOLD),
+                    ft.Row(
+                        [
+                            ft.ElevatedButton("🚚 Guincho 24h", on_click=lambda _: ir_para_categoria("guincho")),
+                            ft.ElevatedButton("🔑 Chaveiro 24h", on_click=lambda _: ir_para_categoria("chaveiro")),
+                            ft.ElevatedButton("💊 Farmácia 24h", on_click=lambda _: ir_para_categoria("farmacia")),
+                            ft.ElevatedButton("⚡ Eletricista 24h", on_click=lambda _: ir_para_categoria("eletricista")),
+                            ft.ElevatedButton("🔥 Gás 24h", on_click=lambda _: ir_para_categoria("gas")),
+                        ],
+                        wrap=True,
+                        spacing=6,
+                    ),
+                ],
+                spacing=6,
+            ),
+        )
+
+        view_sos.controls.extend([
+            header_sos,
+            botoes_rapidos,
+            atalhos_socorro,
+            ft.Container(
+                padding=padding.symmetric(horizontal=14),
+                content=ft.Column(
+                    [
+                        ft.Text("Telefones Oficiais de Urgência & Utilidade Pública:", size=12, weight=ft.FontWeight.BOLD),
+                        *linhas_sos,
+                    ],
+                    spacing=8,
+                ),
+            ),
+            ft.Container(height=40),
+        ])
+
+    # 4. ABA FAVORITOS (Estabelecimentos Marcados pelo Usuário)
+    view_favoritos = ft.Column(
+        spacing=8,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+    )
+
+    def renderizar_view_favoritos():
+        view_favoritos.controls.clear()
+        eh_dark = page.theme_mode == ft.ThemeMode.DARK
+        bg_card = "#1E293B" if eh_dark else "#FFFFFF"
+        borda_card = "#334155" if eh_dark else "#E2E8F0"
+
+        header_fav = ft.Container(
+            padding=padding.only(left=14, right=14, top=50, bottom=6),
+            content=ft.Row(
+                [
+                    ft.Row(
+                        [
+                            ft.Container(
+                                content=ft.Icon(Icons.STAR, color=Colors.WHITE, size=18),
+                                bgcolor=Colors.AMBER_600,
+                                padding=6,
+                                border_radius=8,
+                            ),
+                            ft.Column(
+                                [
+                                    ft.Text("Meus Favoritos", size=18, weight=ft.FontWeight.BOLD),
+                                    ft.Text(f"{len(favoritos)} estabelecimentos salvos", size=11, color=Colors.GREY_500),
+                                ],
+                                spacing=1,
+                            ),
+                        ],
+                        spacing=8,
+                    ),
+                    botao_tema,
+                ],
+                alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+            ),
+        )
+
+        locais_fav = [p for p in dados_servicos_completos if p.get("nome") in favoritos]
+
+        if not locais_fav:
+            corpo_fav = ft.Container(
+                padding=40,
+                alignment=alignment.center,
+                content=ft.Column(
+                    [
+                        ft.Icon(Icons.STAR_BORDER, size=64, color=Colors.AMBER_400),
+                        ft.Text("Nenhum favorito salvo ainda", size=16, weight=ft.FontWeight.BOLD, text_align=ft.TextAlign.CENTER),
+                        ft.Text(
+                            "Toque na estrela (⭐) de qualquer estabelecimento na aba Início para guardá-lo aqui e ter acesso rápido quando precisar!",
+                            size=12,
+                            color=Colors.GREY_500,
+                            text_align=ft.TextAlign.CENTER,
+                        ),
+                        ft.ElevatedButton(
+                            "Explorar Estabelecimentos",
+                            icon=Icons.EXPLORE,
+                            color=Colors.WHITE,
+                            bgcolor=Colors.BLUE_600,
+                            on_click=lambda _: mudar_aba_dock(0),
+                        ),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    spacing=12,
+                ),
+            )
+        else:
+            cards_fav = []
+            for p in locais_fav:
+                e_24h = p.get("is_24h", False)
+                horario_str = p.get("horario", "24 Horas" if e_24h else "Horário Comercial")
+                tel_str = p.get("tel")
+                
+                cards_fav.append(
+                    ft.Card(
+                        elevation=2,
+                        content=ft.Container(
+                            padding=12,
+                            border_radius=12,
+                            bgcolor=bg_card,
+                            content=ft.Column(
+                                [
+                                    ft.Row(
+                                        [
+                                            ft.Column(
+                                                [
+                                                    ft.Text(p["nome"], weight=ft.FontWeight.BOLD, size=13),
+                                                    ft.Text(f"📍 {p.get('endereco', '')}", size=11, color=Colors.GREY_400 if eh_dark else Colors.GREY_600),
+                                                    ft.Text(f"🕒 {horario_str} • {p.get('distancia', 0):.1f} km", size=10, color=Colors.GREEN_400 if e_24h else Colors.GREY_500),
+                                                ],
+                                                expand=True,
+                                                spacing=2,
+                                            ),
+                                            ft.IconButton(
+                                                icon=Icons.STAR,
+                                                icon_color=Colors.AMBER,
+                                                icon_size=22,
+                                                tooltip="Remover dos favoritos",
+                                                on_click=lambda _, nome=p["nome"]: (
+                                                    alternar_favorito(nome),
+                                                    renderizar_view_favoritos(),
+                                                    safe_update()
+                                                ),
+                                            ),
+                                        ],
+                                        alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                                    ),
+                                    ft.Row(
+                                        [
+                                            *(
+                                                [
+                                                    ft.ElevatedButton(
+                                                        "WhatsApp",
+                                                        icon=Icons.CHAT,
+                                                        color=Colors.WHITE,
+                                                        bgcolor=Colors.GREEN_600,
+                                                        on_click=lambda _, tel=tel_str, nome=p["nome"]: abrir_url(
+                                                            page, gerar_link_whatsapp(tel, nome)
+                                                        ),
+                                                    ),
+                                                    ft.OutlinedButton(
+                                                        "Ligar",
+                                                        icon=Icons.PHONE,
+                                                        on_click=lambda _, t=tel_str, n=p["nome"]: ligar_emergencia(t, n),
+                                                    ),
+                                                ]
+                                                if tel_str else []
+                                            ),
+                                            ft.IconButton(
+                                                icon=Icons.DIRECTIONS,
+                                                icon_color=Colors.BLUE_600,
+                                                tooltip="Traçar Rota",
+                                                on_click=lambda _, item=p: abrir_url(
+                                                    page,
+                                                    f"https://www.google.com/maps/dir/?api=1&origin={coords_atuais[0]},{coords_atuais[1]}&destination={item['coords'][0]},{item['coords'][1]}&travelmode=driving"
+                                                ),
+                                            ),
+                                        ],
+                                        spacing=6,
+                                    ),
+                                ],
+                                spacing=8,
+                            ),
+                        ),
+                    )
+                )
+            corpo_fav = ft.Container(
+                padding=padding.symmetric(horizontal=14),
+                content=ft.Column(cards_fav, spacing=10),
+            )
+
+        view_favoritos.controls.extend([
+            header_fav,
+            corpo_fav,
+            ft.Container(height=40),
+        ])
+
+    # Container dinâmico central que troca de aba instantaneamente
+    container_corpo = ft.Container(
+        content=view_inicio,
+        expand=True,
+    )
+
+    # Barra Inferior Fixa (Dock) com Elevação e Safe Padding para Android
     container_dock = ft.Container()
 
     def mudar_aba_dock(nova_aba):
@@ -3611,27 +4192,24 @@ def main(page: ft.Page):
         
         if nova_aba == 0:
             filtro_apenas_favoritos = False
+            container_corpo.content = view_inicio
             aplicar_filtro_e_renderizar()
-            mostrar_snack(page, "Mostrando todos os serviços")
+            mostrar_snack(page, "Aba Início: Todos os estabelecimentos e serviços")
         elif nova_aba == 1:
-            salvar_e_abrir_mapa(
-                coords_atuais[0],
-                coords_atuais[1],
-                dados_servicos_exibidos,
-                page=page,
-                chave_servico=chave_servico_atual,
-                raio_km=raio_atual,
-            )
-            mostrar_snack(page, "Abrindo Mapa Geral...")
+            renderizar_view_mapa()
+            container_corpo.content = view_mapa
+            mostrar_snack(page, "Aba Mapa: Localização e Rotas")
         elif nova_aba == 2:
-            abrir_modal_sos()
+            renderizar_view_sos()
+            container_corpo.content = view_sos
+            mostrar_snack(page, "Aba S.O.S: Central de Emergências 24H")
         elif nova_aba == 3:
-            filtro_apenas_favoritos = True
-            aplicar_filtro_e_renderizar()
-            if not any(p.get("nome") in favoritos for p in dados_servicos_completos):
-                mostrar_snack(page, "Dica: Toque na estrela (⭐) de qualquer estabelecimento para salvá-lo aqui!")
+            renderizar_view_favoritos()
+            container_corpo.content = view_favoritos
+            if not favoritos:
+                mostrar_snack(page, "Aba Favoritos: Toque na estrela (⭐) de um local para salvá-lo")
             else:
-                mostrar_snack(page, f"Exibindo {len(dados_servicos_exibidos)} locais favoritados ⭐")
+                mostrar_snack(page, f"Aba Favoritos: {len(favoritos)} locais salvos ⭐")
 
         renderizar_dock_inferior()
         safe_update()
@@ -3664,7 +4242,7 @@ def main(page: ft.Page):
                                 rotulo,
                                 size=11,
                                 weight=ft.FontWeight.BOLD if ativa else ft.FontWeight.W_500,
-                                color=cor_item
+                                color=cor_item,
                             ),
                         ],
                         alignment=ft.MainAxisAlignment.CENTER,
@@ -3672,9 +4250,8 @@ def main(page: ft.Page):
                         spacing=2,
                     ),
                     padding=padding.symmetric(horizontal=8, vertical=6),
-                    border_radius=8,
+                    border_radius=10,
                     bgcolor=Colors.BLUE_950 if (ativa and eh_dark) else ("#EFF6FF" if ativa else Colors.TRANSPARENT),
-                    ink=True,
                     expand=True,
                     on_click=lambda _, a=id_aba: mudar_aba_dock(a),
                 )
@@ -3685,11 +4262,12 @@ def main(page: ft.Page):
             alignment=ft.MainAxisAlignment.SPACE_AROUND,
             vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
-        container_dock.padding = padding.symmetric(horizontal=6, vertical=4)
+        # Safe padding inferior generoso (20px) para evitar colisão com a barra de gestos do Android
+        container_dock.padding = padding.only(left=8, right=8, top=6, bottom=20)
         container_dock.bgcolor = cor_bg
         container_dock.border = border.only(top=border.BorderSide(1, cor_borda))
 
-    # Remove qualquer navigation_bar instável da janela
+    # Remove qualquer navigation_bar instável
     try:
         page.navigation_bar = None
     except Exception:
@@ -3697,7 +4275,7 @@ def main(page: ft.Page):
 
     layout_principal = ft.Column(
         [
-            conteudo_principal,
+            container_corpo,
             container_dock,
         ],
         spacing=0,
