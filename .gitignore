@@ -10,6 +10,8 @@ Felipe_Dias.py
 
 # Arquivos temporários gerados em execução
 mapa_*.html
+user_location*.json
+favoritos_*.json
 __pycache__/
 *.pyc
 build/

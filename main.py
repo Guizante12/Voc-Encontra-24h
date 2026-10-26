@@ -475,46 +475,34 @@ CIDADES_POPULARES_BRASIL = {
     "campo grande": (-20.4697, -54.6201, "Campo Grande, MS - Centro"),
 }
 
+import tempfile
+
 def salvar_localizacao_usuario(lat, lng, endereco):
-    """Grava a localização preferida do usuário em cache local persistente."""
+    """Grava a localização preferida do usuário em cache local persistente no dispositivo."""
     try:
         dados = {"lat": float(lat), "lng": float(lng), "endereco": str(endereco)}
-        caminhos = [
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_location.json"),
-            os.path.join(tempfile.gettempdir(), "voce_encontra_user_loc.json"),
-        ]
-        for c in caminhos:
-            try:
-                with open(c, "w", encoding="utf-8") as f:
-                    json.dump(dados, f, ensure_ascii=False)
-                break
-            except Exception:
-                continue
+        caminho = os.path.join(tempfile.gettempdir(), "voce_encontra_user_loc.json")
+        with open(caminho, "w", encoding="utf-8") as f:
+            json.dump(dados, f, ensure_ascii=False)
     except Exception:
         pass
 
 def carregar_localizacao_usuario():
-    """Recupera a última localização salva pelo usuário para não perder a posição."""
-    caminhos = [
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), "user_location.json"),
-        os.path.join(tempfile.gettempdir(), "voce_encontra_user_loc.json"),
-    ]
-    for c in caminhos:
-        if os.path.exists(c):
-            try:
-                with open(c, "r", encoding="utf-8") as f:
-                    d = json.load(f)
-                    if "lat" in d and "lng" in d and "endereco" in d:
-                        return (float(d["lat"]), float(d["lng"]), str(d["endereco"]))
-            except Exception:
-                pass
+    """Recupera a última localização salva pelo usuário no dispositivo."""
+    try:
+        caminho = os.path.join(tempfile.gettempdir(), "voce_encontra_user_loc.json")
+        if os.path.exists(caminho):
+            with open(caminho, "r", encoding="utf-8") as f:
+                d = json.load(f)
+                if "lat" in d and "lng" in d and "endereco" in d:
+                    return (float(d["lat"]), float(d["lng"]), str(d["endereco"]))
+    except Exception:
+        pass
     return None
 
 # Localização inicial padrão (Curitiba, PR - Cristo Rei)
 CLIENTE_COORDS_PADRAO = (-25.4362, -49.2483)
 ENDERECO_PADRAO = "Curitiba, PR - Cristo Rei"
-
-import tempfile
 
 def obter_caminho_mapa():
     try:
@@ -1624,8 +1612,8 @@ def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_
             continue
 
     # 4. Busca complementar no OpenStreetMap Nominatim com resolução de bounding box exato
-    cidade_limpa = "Curitiba"
-    if endereco_busca:
+    cidade_limpa = ""
+    if endereco_busca and "detectando" not in endereco_busca.lower():
         partes_end = [p.strip() for p in endereco_busca.split(",") if p.strip()]
         for p in reversed(partes_end):
             p_sem_paren = re.sub(r"\(.*?\)", "", p).strip()
@@ -1641,7 +1629,8 @@ def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_
     delta_deg = max(0.04, min(raio_km / 111.0, 0.50))
 
     for t in termos_atuais[:3]:
-        url = f"https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&q={urllib.parse.quote(t)}+{urllib.parse.quote(cidade_limpa)}&viewbox={lng-delta_deg},{lat+delta_deg},{lng+delta_deg},{lat-delta_deg}&bounded=1&limit=30"
+        termo_q = f"{t} {cidade_limpa}".strip() if cidade_limpa else t
+        url = f"https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&extratags=1&q={urllib.parse.quote(termo_q)}&viewbox={lng-delta_deg},{lat+delta_deg},{lng+delta_deg},{lat-delta_deg}&bounded=1&limit=30"
         headers_nom = {"User-Agent": "VoceEncontra24H-App/3.0 (contato@voceencontra24h.com.br)"}
         try:
             response = requests.get(url, headers=headers_nom, timeout=4.5)
@@ -1657,7 +1646,7 @@ def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_
                         rua_nom = addr.get("road") or addr.get("street") or ""
                         num_nom = addr.get("house_number") or ""
                         bai_nom = addr.get("suburb") or addr.get("neighbourhood") or ""
-                        cid_nom = addr.get("city") or addr.get("town") or cidade_limpa
+                        cid_nom = addr.get("city") or addr.get("town") or (cidade_limpa or "Região")
 
                         nome_completo = item.get("name") or item.get("display_name", "Estabelecimento").split(",")[0].strip()
 
@@ -1711,8 +1700,16 @@ def buscar_servicos_reais(lat, lng, chave_servico="todos", raio_km=15, endereco_
         except Exception:
             pass
 
+    # Se não encontrou no OpenStreetMap ou se a região tiver poucos mapeamentos, usa a base regional
+    if not prestadores:
+        try:
+            prestadores = gerar_estabelecimentos_regionais(lat, lng, chave_servico, endereco_busca, raio_km)
+        except Exception as e_reg:
+            print(f"Aviso gerar_estabelecimentos_regionais: {e_reg}")
+            prestadores = []
+
     # Ordena rigorosamente por proximidade do cliente
-    prestadores.sort(key=lambda x: x["distancia"])
+    prestadores.sort(key=lambda x: x.get("distancia", 999))
     return prestadores
 
 
@@ -2331,25 +2328,29 @@ def main(page: ft.Page):
 
     # Inicialização do serviço nativo de geolocalização e permissões (Android / Mobile)
     gl = None
-    if ftg and hasattr(ftg, "Geolocator"):
+    geolocator_cls = getattr(ftg, "Geolocator", getattr(ft, "Geolocator", None)) if (ftg or hasattr(ft, "Geolocator")) else None
+    if geolocator_cls:
         try:
-            gl = ftg.Geolocator()
-            if hasattr(page, "services"):
-                page.services.append(gl)
-            elif hasattr(page, "overlay"):
+            gl = geolocator_cls()
+            if hasattr(page, "overlay"):
                 page.overlay.append(gl)
+            if hasattr(page, "services"):
+                try:
+                    page.services.append(gl)
+                except Exception:
+                    pass
         except Exception as e:
             print(f"Aviso geolocator init: {e}")
             gl = None
 
-    # Estado da aplicação (respeita preferência salva ou inicializa em Rio Verde - GO)
+    # Estado da aplicação (respeita preferência salva no dispositivo ou detecta via GPS)
     loc_salva = carregar_localizacao_usuario()
     if loc_salva:
         coords_atuais = (loc_salva[0], loc_salva[1])
         endereco_atual = loc_salva[2]
     else:
         coords_atuais = CLIENTE_COORDS_PADRAO
-        endereco_atual = ENDERECO_PADRAO
+        endereco_atual = "Detectando sua localização..."
     chave_servico_atual = "todos"
     raio_atual = 15.0
     filtro_apenas_24h = False  # Controle do filtro 24H
@@ -2357,31 +2358,22 @@ def main(page: ft.Page):
 
     # Sistema de Favoritos Persistentes com suporte a Android (diretório gravável)
     def carregar_favoritos():
-        caminhos = [
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_usuario.json"),
-            os.path.join(tempfile.gettempdir(), "favoritos_usuario.json"),
-        ]
-        for caminho in caminhos:
-            try:
-                if os.path.exists(caminho):
-                    with open(caminho, "r", encoding="utf-8") as f:
-                        return set(json.load(f))
-            except Exception:
-                continue
+        caminho = os.path.join(tempfile.gettempdir(), "voce_encontra_favoritos.json")
+        try:
+            if os.path.exists(caminho):
+                with open(caminho, "r", encoding="utf-8") as f:
+                    return set(json.load(f))
+        except Exception:
+            pass
         return set()
 
     def salvar_favoritos(favs):
-        caminhos = [
-            os.path.join(os.path.dirname(os.path.abspath(__file__)), "favoritos_usuario.json"),
-            os.path.join(tempfile.gettempdir(), "favoritos_usuario.json"),
-        ]
-        for caminho in caminhos:
-            try:
-                with open(caminho, "w", encoding="utf-8") as f:
-                    json.dump(list(favs), f, ensure_ascii=False)
-                break
-            except Exception:
-                continue
+        try:
+            caminho = os.path.join(tempfile.gettempdir(), "voce_encontra_favoritos.json")
+            with open(caminho, "w", encoding="utf-8") as f:
+                json.dump(list(favs), f, ensure_ascii=False)
+        except Exception:
+            pass
 
     favoritos = carregar_favoritos()
 
@@ -3223,6 +3215,38 @@ def main(page: ft.Page):
         dlg.open = True
         safe_update()
 
+    def _extrair_lat_lng(pos_obj):
+        if not pos_obj:
+            return None
+        lat = getattr(pos_obj, "latitude", None)
+        lng = getattr(pos_obj, "longitude", None)
+        if lat is None and isinstance(pos_obj, dict):
+            lat = pos_obj.get("latitude")
+            lng = pos_obj.get("longitude")
+        if lat is not None and lng is not None:
+            try:
+                lat_f, lng_f = float(lat), float(lng)
+                if abs(lat_f) > 0.0001 or abs(lng_f) > 0.0001:
+                    return (lat_f, lng_f)
+            except Exception:
+                pass
+        return None
+
+    async def _chamar_gl(metodo_nome, *args, **kwargs):
+        if not gl:
+            return None
+        for nome in [metodo_nome, f"{metodo_nome}_async"]:
+            if hasattr(gl, nome):
+                fn = getattr(gl, nome)
+                try:
+                    res = fn(*args, **kwargs)
+                    if asyncio.iscoroutine(res) or hasattr(res, "__await__"):
+                        return await res
+                    return res
+                except Exception as err:
+                    print(f"Aviso gl.{nome}: {err}")
+        return None
+
     async def acao_obter_gps_nativo():
         """Executa a solicitação nativa de permissão de GPS no Android/Windows e atualiza coordenadas."""
         progresso.visible = True
@@ -3233,19 +3257,29 @@ def main(page: ft.Page):
         # 1. Tenta Geolocator Nativo (Android / Celular) com solicitação explícita de permissão do sistema
         if gl:
             try:
-                if hasattr(gl, "is_location_service_enabled"):
-                    enabled = await gl.is_location_service_enabled()
-                    if not enabled:
-                        mostrar_snack(page, "Por favor, ative o GPS/Localização no seu aparelho.")
+                servico_ativo = await _chamar_gl("is_location_service_enabled")
+                if servico_ativo is False:
+                    mostrar_snack(page, "⚠️ Ative o GPS nas configurações do seu celular.")
 
-                # Dispara o diálogo nativo do Android: "Permitir que o app acesse a localização deste dispositivo?"
-                if hasattr(gl, "request_permission"):
-                    perm = await gl.request_permission()
-                    print(f"Permissão GPS do Android: {perm}")
+                # Dispara solicitação nativa de permissão do Android ("Enquanto usa o app")
+                await _chamar_gl("request_permission")
 
-                pos = await gl.get_current_position()
-                if pos and hasattr(pos, "latitude") and hasattr(pos, "longitude"):
-                    coords_encontradas = (pos.latitude, pos.longitude)
+                # Tenta obter a posição atual via satélite com timeout de 8 segundos
+                try:
+                    tarefa = _chamar_gl("get_current_position")
+                    if tarefa:
+                        pos = await asyncio.wait_for(tarefa, timeout=8.0)
+                        coords_encontradas = _extrair_lat_lng(pos)
+                except Exception as e_pos:
+                    print(f"Aviso get_current_position: {e_pos}")
+
+                # Se o satélite demorar ou falhar, tenta o cache de última posição do aparelho
+                if not coords_encontradas:
+                    try:
+                        pos_cache = await _chamar_gl("get_last_known_position")
+                        coords_encontradas = _extrair_lat_lng(pos_cache)
+                    except Exception as e_cache:
+                        print(f"Aviso get_last_known_position: {e_cache}")
             except Exception as ex:
                 print(f"Aviso Geolocator Nativo: {ex}")
 
@@ -3261,15 +3295,14 @@ def main(page: ft.Page):
             definir_nova_localizacao(loc_win[0], loc_win[1], loc_win[2])
             return
 
-        # 4. Fallback de localização por IP (quando o computador não possui chip GPS de satélite)
+        # 4. Fallback de localização por IP / Rede (funciona no celular e computador)
         loc_ip = obter_localizacao_gps()
         progresso.visible = False
         safe_update()
 
         if loc_ip:
             lat_ip, lng_ip, end_ip = loc_ip
-            # No computador, provedores de internet (como Copel/Ligga) frequentemente apontam Paranaguá
-            eh_desktop = sys.platform in ["win32", "darwin"] or not gl
+            eh_desktop = sys.platform in ["win32", "darwin"] and not gl
             if eh_desktop and ("paranagu" in end_ip.lower() or "pr" in end_ip.lower()):
                 def usar_curitiba_ip(ev=None):
                     dlg_ip.open = False
@@ -3313,7 +3346,7 @@ def main(page: ft.Page):
                                     bgcolor=Colors.BLUE_900 if page.theme_mode == ft.ThemeMode.DARK else "#E0F2FE",
                                 ),
                                 ft.Text(
-                                    "Provedores de internet no Paraná (Copel/Ligga/Claro) frequentemente apontam a central em Paranaguá.\n\n"
+                                    "Provedores de internet no Paraná frequentemente apontam a central em Paranaguá.\n\n"
                                     "Deseja usar Curitiba - PR ou manter a cidade do seu provedor?",
                                     size=12,
                                 ),
@@ -3348,14 +3381,23 @@ def main(page: ft.Page):
             else:
                 definir_nova_localizacao(lat_ip, lng_ip, end_ip)
         else:
-            mostrar_snack(page, "Não foi possível obter sinal GPS. Escolha sua cidade na lista.")
+            mostrar_snack(page, "Não foi possível obter sinal GPS. Toque no topo para escolher sua cidade.")
 
     def disparar_solicitacao_gps(e=None):
         """Dispara a rotina assíncrona de GPS nativo de forma segura."""
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(acao_obter_gps_nativo())
+            return
+        except RuntimeError:
+            pass
         if hasattr(page, "run_task"):
-            page.run_task(acao_obter_gps_nativo)
-        else:
-            threading.Thread(target=lambda: asyncio.run(acao_obter_gps_nativo()), daemon=True).start()
+            try:
+                page.run_task(acao_obter_gps_nativo)
+                return
+            except Exception:
+                pass
+        threading.Thread(target=lambda: asyncio.run(acao_obter_gps_nativo()), daemon=True).start()
 
     def solicitar_permissao_gps_modal(e=None):
         """Apresenta o diálogo de permissão de GPS para o usuário autorizar explicitamente."""
@@ -3528,8 +3570,8 @@ def main(page: ft.Page):
                                     padding=padding.symmetric(horizontal=6, vertical=2),
                                     border_radius=6,
                                     ink=True,
-                                    on_click=solicitar_permissao_gps_modal,
-                                    tooltip="Solicitar permissão e ativar localização GPS do dispositivo",
+                                    on_click=lambda _: disparar_solicitacao_gps(),
+                                    tooltip="Detectar minha localização atual via GPS",
                                 ),
                             ],
                             spacing=6,
@@ -3564,8 +3606,8 @@ def main(page: ft.Page):
                     icon=Icons.MY_LOCATION,
                     icon_size=18,
                     icon_color=Colors.BLUE_500,
-                    tooltip="Solicitar permissão e obter GPS atual",
-                    on_click=solicitar_permissao_gps_modal,
+                    tooltip="Detectar GPS atual",
+                    on_click=lambda _: disparar_solicitacao_gps(),
                 ),
                 ft.IconButton(
                     icon=Icons.ARROW_FORWARD,
@@ -3788,7 +3830,7 @@ def main(page: ft.Page):
                                 icon=Icons.GPS_FIXED,
                                 color=Colors.WHITE,
                                 bgcolor=Colors.BLUE_600,
-                                on_click=solicitar_permissao_gps_modal,
+                                on_click=lambda _: disparar_solicitacao_gps(),
                             ),
                             ft.OutlinedButton(
                                 "Trocar Cidade",
@@ -4391,9 +4433,9 @@ def main(page: ft.Page):
     page.add(layout_principal)
     carregar_dados_busca()
 
-    # Salva a localização ativa caso ainda não esteja persistida
+    # Se não houver localização salva anterior no aparelho, dispara a detecção automática de GPS
     if not loc_salva:
-        salvar_localizacao_usuario(coords_atuais[0], coords_atuais[1], endereco_atual)
+        disparar_solicitacao_gps()
 
 
 # Inicialização compatível com Flet 1.0+ (ft.run) e versões legadas (ft.app)
